@@ -94,11 +94,7 @@ extract_sample_labels <- function(txt) {
   locs <- str_locate_all(
     txt,
     regex(
-      paste0(
-        "Mixing Zone\\s+(?:Background|Compliance)",
-        "(?:\\s+Sample)?",
-        "(?:\\s*#\\s*\\d+)?"
-      ),
+      sample_label_pattern(),
       ignore_case = TRUE
     )
   )[[1]]
@@ -113,6 +109,14 @@ extract_sample_labels <- function(txt) {
 
 extract_times <- function(txt) {
   str_extract_all(txt, "\\b\\d{1,2}:\\d{2}\\s*(?:AM|PM)\\b")[[1]]
+}
+
+sample_label_pattern <- function() {
+  paste0(
+    "Mixing Zone\\s+(?:Background|Compliance)",
+    "(?:\\s+Sample)?",
+    "(?:\\s*#\\s*\\d+|\\s+\\d+(?![\\d']))?"
+  )
 }
 
 extract_depth_rows <- function(txt) {
@@ -198,11 +202,7 @@ extract_sample_slots <- function(txt) {
   locs <- str_locate_all(
     txt,
     regex(
-      paste0(
-        "Mixing Zone\\s+(?:Background|Compliance)",
-        "(?:\\s+Sample)?",
-        "(?:\\s*#\\s*\\d+)?"
-      ),
+      sample_label_pattern(),
       ignore_case = TRUE
     )
   )[[1]]
@@ -213,7 +213,16 @@ extract_sample_slots <- function(txt) {
 
   label_slots <- map_dfr(seq_len(nrow(locs)), \(i) {
     label <- str_sub(txt, locs[i, "start"], locs[i, "end"]) |> str_squish()
-    sample_number <- str_match(label, "#\\s*(\\d+)")[, 2]
+    sample_number <- str_match(label, "(?:#\\s*)?(\\d+)\\s*$")[, 2]
+    line_prefix <- str_sub(txt, 1, locs[i, "start"] - 1) |>
+      str_split("\n") |>
+      pluck(1) |>
+      tail(1)
+    line_time <- str_extract_all(line_prefix, "\\b\\d{1,2}:\\d{2}\\s*(?:AM|PM)\\b") |>
+      pluck(1) |>
+      tail(1)
+
+    if (length(line_time) == 0) line_time <- NA_character_
 
     tibble(
       bundle_id = i,
@@ -224,6 +233,7 @@ extract_sample_slots <- function(txt) {
         TRUE ~ NA_character_
       ),
       sample_number = suppressWarnings(as.integer(sample_number)),
+      line_time = line_time,
       has_sample_number = !is.na(sample_number)
     )
   }) |>
@@ -249,6 +259,7 @@ extract_sample_slots <- function(txt) {
   label_slots |>
     left_join(time_lookup, by = "slot_event_id") |>
     mutate(
+      time = coalesce(line_time, time),
       sample_label = if_else(
         is.na(sample_number),
         str_c("Mixing Zone ", str_to_title(sample_group)),
@@ -286,7 +297,11 @@ is_data_table_page <- function(txt) {
   str_detect(
     txt,
     regex(
-      "\\bDATE\\b\\s+(?:\\bDATA\\s+POINT\\b|\\bTYPE\\s+OF\\s+SAMPLE\\b)\\s+\\bTIME\\b",
+      paste(
+        "\\bDATE\\b\\s+(?:\\bDATA\\s+POINT\\b|\\bTYPE\\s+OF\\s+SAMPLE\\b)\\s+\\bTIME\\b",
+        "\\bDATE\\b\\s+\\bTIME\\b\\s+(?:\\bDATA\\s+POINT\\b|\\bTYPE\\s+OF\\s+SAMPLE\\b)",
+        sep = "|"
+      ),
       ignore_case = TRUE
     )
   )
@@ -465,6 +480,7 @@ ggplot(measurements, aes(x = sample_depth_ft)) +
 
 
 diffs <- measurements %>%
+  filter(!is.na(sample_number)) %>%
   select(date, sample_group, sample_number, depth_position, turbidity_ntu) %>%
   pivot_wider(names_from = sample_group, values_from = turbidity_ntu) %>%
   mutate(diff = `compliance` - `background`)
@@ -484,6 +500,5 @@ ggplot(filter(diffs, depth_position != "Bottom"), aes(x = date, y = diff)) +
   #geom_smooth(method = "loess", span = 0.019) +
   geom_line()
 
-diffs %>% arrange(-diff)
-```
 
+```
