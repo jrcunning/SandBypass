@@ -457,7 +457,7 @@ clean_output <- function(dat) {
     )
 }
 
-pdf_dir <- "/Users/rcunning/Projects/SandBypass/Sand Bypass - Turbidity Reports from Oculus"
+pdf_dir <- ("data/turbidity_reports")
 
 raw_dat <- parse_pdf_folder(pdf_dir)
 dat <- clean_output(raw_dat)
@@ -468,37 +468,5 @@ dat <- clean_output(raw_dat)
 measurements <- dat %>%
   filter(page_status != "not_data_table")
 
-ggplot(measurements, aes(x = date, y = turbidity_ntu)) +
-  geom_point(aes(color = sample_group), alpha = 0.6) +
-  facet_wrap(~depth_position)
-
-ggplot(measurements, aes(x = sample_depth_ft)) +
-  facet_wrap(~depth_position) +
-  geom_histogram()
-
-
-
-
-diffs <- measurements %>%
-  filter(!is.na(sample_number)) %>%
-  select(date, sample_group, sample_number, depth_position, turbidity_ntu) %>%
-  pivot_wider(names_from = sample_group, values_from = turbidity_ntu) %>%
-  mutate(diff = `compliance` - `background`)
-
-
-
-  
-
-ggplot(diffs, aes(x = date, y = diff)) +
-  geom_point(aes(shape = factor(sample_number))) +
-  facet_wrap(~depth_position) +
-  geom_smooth(method = "loess", span = 0.05)
-
-
-ggplot(filter(diffs, depth_position != "Bottom"), aes(x = date, y = diff)) +
-  geom_point(aes(shape = factor(sample_number))) +
-  #geom_smooth(method = "loess", span = 0.019) +
-  geom_line()
-
-
+write_csv(measurements, file = "data/processed/turbidity.csv")
 ```

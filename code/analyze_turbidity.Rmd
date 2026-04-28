@@ -1,0 +1,49 @@
+---
+title: "Untitled"
+author: "Ross Cunning"
+date: "2026-04-28"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+measurements <- read_csv("data/processed/turbidity.csv")
+
+ggplot(measurements, aes(x = date, y = turbidity_ntu)) +
+  geom_point(aes(color = sample_group), alpha = 0.6) +
+  facet_wrap(~depth_position)
+
+ggplot(measurements, aes(x = sample_depth_ft)) +
+  facet_wrap(~depth_position) +
+  geom_histogram()
+
+
+
+
+diffs <- measurements %>%
+  filter(!is.na(sample_number)) %>%
+  select(date, sample_group, sample_number, depth_position, turbidity_ntu) %>%
+  pivot_wider(names_from = sample_group, values_from = turbidity_ntu) %>%
+  mutate(diff = `compliance` - `background`)
+
+
+
+  
+
+ggplot(diffs, aes(x = date, y = diff)) +
+  geom_point(aes(shape = factor(sample_number))) +
+  facet_wrap(~depth_position) +
+  geom_smooth(method = "loess", span = 0.05)
+
+
+ggplot(filter(diffs, depth_position != "Bottom"), aes(x = date, y = diff)) +
+  geom_point(aes(shape = factor(sample_number))) +
+  #geom_smooth(method = "loess", span = 0.019) +
+  geom_line()
+
+
+```
+
