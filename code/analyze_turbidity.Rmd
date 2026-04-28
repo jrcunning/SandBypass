@@ -47,3 +47,164 @@ ggplot(filter(diffs, depth_position != "Bottom"), aes(x = date, y = diff)) +
 
 ```
 
+## Turbidity threshold screening
+
+The project has two turbidity thresholds that are useful to screen directly
+from the parsed monitoring data:
+
+1. Construction shutdown: compliance turbidity exceeds background by more than
+   29 NTU.
+2. Benthic monitoring trigger: the densest portion of the plume extends within
+   a 10 m radius of the same location for three consecutive days and exceeds
+   10 NTU at each reading.
+
+The second threshold has a spatial component. The parsed PDF table currently
+contains sampling group, sample number, depth, date, and time, but not station
+coordinates or plume-location geometry. The code below therefore screens the
+`>10 NTU` portion directly and leaves a clearly marked placeholder for adding
+the 10 m same-location logic when location data are available.
+
+```{r turbidity-threshold-setup}
+shutdown_threshold_ntu <- 29
+benthic_screen_threshold_ntu <- 10
+benthic_trigger_days <- 3
+benthic_trigger_radius_m <- 10
+
+turbidity_screen <- diffs %>%
+  filter(
+    #age_status == "sampled",
+    #observed_depth_row,
+    #!is.na(turbidity_ntu),
+    #!is.na(difference_from_background)
+  ) %>%
+  mutate(
+    shutdown_exceedance = diff > shutdown_threshold_ntu,
+    benthic_threshold_exceedance = diff > benthic_screen_threshold_ntu,
+    threshold_class = case_when(
+      shutdown_exceedance ~ ">29 NTU above background",
+      benthic_threshold_exceedance ~ ">10 to 29 NTU above background",
+      TRUE ~ "<=10 NTU above background"
+    ),
+    threshold_class = factor(
+      threshold_class,
+      levels = c(
+        "<=10 NTU above background",
+        ">10 to 29 NTU above background",
+        ">29 NTU above background"
+      )
+    )
+  )
+```
+
+### Exceedance summaries
+
+These tables list individual exceedance records and summarize counts by date,
+sample group, and depth. They are intended as the first audit trail for dates
+when shutdown or benthic-screen thresholds would have been crossed.
+
+```{r turbidity-exceedance-tables}
+shutdown_exceedances <- turbidity_screen %>%
+  filter(shutdown_exceedance)
+
+benthic_threshold_exceedances <- turbidity_screen %>%
+  filter(benthic_threshold_exceedance)
+
+turbidity_daily_summary <- turbidity_screen %>%
+  summarize(
+    n_readings = n(),
+    n_benthic_threshold_exceedances = sum(benthic_threshold_exceedance, na.rm = TRUE),
+    n_shutdown_exceedances = sum(shutdown_exceedance, na.rm = TRUE),
+    max_difference_from_background = max(diff, na.rm = TRUE),
+    .by = c(date, depth_position)
+  ) %>%
+  arrange(date, depth_position)
+
+shutdown_exceedances
+benthic_threshold_exceedances
+turbidity_daily_summary %>% filter(!is.infinite(max_difference_from_background))
+```
+
+### Threshold plots
+
+These plots show raw turbidity differences through time relative to the two
+monitoring thresholds. Points are not averaged before plotting, so high
+individual readings remain visible.
+
+```{r turbidity-threshold-plots}
+ggplot(
+  turbidity_screen,
+  aes(x = date, y = diff)
+) +
+  geom_hline(
+    yintercept = benthic_screen_threshold_ntu,
+    linetype = "dashed",
+    color = "goldenrod3"
+  ) +
+  geom_hline(
+    yintercept = shutdown_threshold_ntu,
+    linetype = "dashed",
+    color = "firebrick"
+  ) +
+  geom_point(aes(color = threshold_class), alpha = 0.75) +
+  facet_wrap(~depth_position) +
+  scale_color_manual(
+    values = c(
+      "<=10 NTU above background" = "grey45",
+      ">10 to 29 NTU above background" = "goldenrod3",
+      ">29 NTU above background" = "firebrick"
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = "Turbidity above background (NTU)",
+    color = NULL
+  )
+```
+
+### Consecutive-day benthic trigger scaffold
+
+This chunk identifies three-or-more consecutive dates with at least one
+`>10 NTU above background` reading. This is not a complete benthic-trigger
+determination until a plume location or monitoring-station field is added and
+used to enforce the 10 m same-location requirement.
+
+```{r benthic-trigger-scaffold}
+benthic_daily_screen <- turbidity_screen %>%
+  filter(benthic_threshold_exceedance) %>%
+  mutate(
+    # TODO: Replace this placeholder with a station/plume-location identifier,
+    # or derive location groups from coordinates using a 10 m radius.
+    plume_location_id = "location_not_available"
+  ) %>%
+  summarize(
+    n_exceeding_readings = n(),
+    max_difference_from_background = max(diff, na.rm = TRUE),
+    .by = c(plume_location_id, date)
+  ) %>%
+  arrange(plume_location_id, date) %>%
+  group_by(plume_location_id) %>%
+  mutate(
+    consecutive_run = cumsum(date != lag(date, default = first(date)) + days(1))
+  ) %>%
+  group_by(plume_location_id, consecutive_run) %>%
+  mutate(
+    consecutive_exceedance_days = n_distinct(date),
+    preliminary_benthic_trigger = consecutive_exceedance_days >= benthic_trigger_days
+  ) %>%
+  ungroup()
+
+preliminary_benthic_trigger_periods <- benthic_daily_screen %>%
+  filter(preliminary_benthic_trigger) %>%
+  summarize(
+    start_date = min(date),
+    end_date = max(date),
+    consecutive_exceedance_days = n_distinct(date),
+    max_difference_from_background = max(max_difference_from_background, na.rm = TRUE),
+    total_exceeding_readings = sum(n_exceeding_readings),
+    .by = c(plume_location_id, consecutive_run)
+  ) %>%
+  arrange(start_date)
+
+benthic_daily_screen
+preliminary_benthic_trigger_periods
+```
