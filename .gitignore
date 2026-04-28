@@ -6,3 +6,7 @@
 .Rproj.user/*
 .Rproj.user/
 .DS_Store
+
+# Old working files
+old_working_files/Sand Bypass Water Quality Reports.xlsx
+old_working_files/analyze_data.Rmd
