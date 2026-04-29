@@ -55,6 +55,19 @@ normalize_transect_id <- function(x) {
     str_replace_all("\\s+", "_")
 }
 
+model_sedimentation_class <- function(transect) {
+  case_when(
+    transect == "ST22" ~ "solid_blue",
+    transect == "ST31" ~ "dashed_red",
+    transect %in% c("ST28", "ST5") ~ "solid_red",
+    TRUE ~ "outside"
+  ) %>%
+    factor(
+      levels = c("solid_blue", "dashed_red", "solid_red", "outside"),
+      ordered = TRUE
+    )
+}
+
 threshold_class <- function(x) {
   case_when(
     is.na(x) ~ NA_character_,
@@ -97,7 +110,13 @@ read_sediment_raw <- function(path) {
       survey_n = survey_number(survey),
       transect_type = str_squish(transect_type),
       transect = normalize_transect_id(transect),
+      model_sedimentation_class = model_sedimentation_class(transect),
       meter = as.integer(meter),
+      expected_permanent_length_m = case_when(
+        transect_type == "Permanent" & transect %in% c("ST1", "ST38") ~ 150L,
+        transect_type == "Permanent" ~ 50L,
+        TRUE ~ NA_integer_
+      ),
       across(starts_with("sed_depth_cm_"), as.numeric)
     )
 }
@@ -232,8 +251,20 @@ raw_overall_audit <- sediment_raw %>%
 raw_transect_audit <- sediment_raw %>%
   summarize(
     transect_type = first(transect_type),
+    model_sedimentation_class = first(model_sedimentation_class),
     min_meter = min(meter),
     max_meter = max(meter),
+    expected_permanent_length_m = if_else(
+      all(is.na(expected_permanent_length_m)),
+      NA_integer_,
+      first(na.omit(expected_permanent_length_m))
+    ),
+    observed_length_m = max_meter - min_meter,
+    length_matches_expected = if_else(
+      transect_type == "Permanent",
+      observed_length_m == expected_permanent_length_m,
+      NA
+    ),
     n_meters = n_distinct(meter),
     n_survey_events = n_distinct(survey),
     surveys = paste(unique(survey[order(survey_n)]), collapse = ", "),
@@ -399,7 +430,9 @@ sediment_meter_processed <- sediment_raw %>%
     survey_n,
     transect_type,
     transect,
+    model_sedimentation_class,
     meter,
+    expected_permanent_length_m,
     mean_sediment_depth_cm,
     max_sediment_depth_cm,
     n_replicates,
@@ -438,9 +471,16 @@ sediment_transect_processed <- sediment_meter_processed %>%
       main_50m_segment & mean_delta_from_baseline_cm >= 1,
       na.rm = TRUE
     ),
-    .by = c(date, survey, survey_n, transect_type, transect)
+    .by = c(
+      date,
+      survey,
+      survey_n,
+      transect_type,
+      transect,
+      model_sedimentation_class
+    )
   ) %>%
-  arrange(survey_n, transect)
+  arrange(survey_n, model_sedimentation_class, transect)
 
 sediment_transect_processed %>%
   filter(survey != "Baseline") %>%
@@ -519,9 +559,16 @@ sediment_replicates %>%
 ```{r construction-delta-plot, fig.width=11, fig.height=7}
 sediment_meter_processed %>%
   filter(survey != "Baseline") %>%
-  ggplot(aes(x = meter, y = survey_n, fill = max_delta_class)) +
+  mutate(
+    transect = fct_reorder(
+      transect,
+      as.integer(model_sedimentation_class) * 1000 + parse_number(transect),
+      .fun = min
+    )
+  ) %>%
+  ggplot(aes(x = meter, y = survey_n, fill = mean_delta_class)) +        # MEAN or MAX
   geom_tile() +
-  facet_wrap(~ transect, scales = "free_x") +
+  facet_wrap(~ model_sedimentation_class + transect, scales = "free_x") +
   scale_fill_manual(
     values = c(
       "below baseline" = "grey90",
@@ -538,7 +585,4 @@ sediment_meter_processed %>%
     fill = "Max delta from baseline"
   ) +
   theme_classic()
-
-
-hist(sediment_meter_processed$max_delta_from_baseline_cm)
 ```
