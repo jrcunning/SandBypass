@@ -57,21 +57,43 @@ normalize_transect_id <- function(x) {
 
 model_sedimentation_class <- function(transect) {
   case_when(
-    transect == "ST22" ~ "solid_blue",
-    transect == "ST31" ~ "dashed_red",
-    transect %in% c("ST28", "ST5") ~ "solid_red",
-    TRUE ~ "outside"
+    transect %in% c("ST22", "ST31") ~ "1.0 cm predicted (dashed red)",
+    transect %in% c("ST28", "ST5") ~ "1.5 mm predicted (solid red)",
+    TRUE ~ "0 cm predicted (outside)"
   ) %>%
     factor(
-      levels = c("solid_blue", "dashed_red", "solid_red", "outside"),
+      levels = c(
+        "1.0 cm predicted (dashed red)",
+        "1.5 mm predicted (solid red)",
+        "0 cm predicted (outside)"
+      ),
       ordered = TRUE
     )
 }
 
+model_sedimentation_predictions <- tibble(
+  model_sedimentation_class = factor(
+    c(
+      "1.0 cm predicted (dashed red)",
+      "1.5 mm predicted (solid red)",
+      "0 cm predicted (outside)"
+    ),
+    levels = c(
+      "1.0 cm predicted (dashed red)",
+      "1.5 mm predicted (solid red)",
+      "0 cm predicted (outside)"
+    ),
+    ordered = TRUE
+  ),
+  predicted_total_sedimentation_cm = c(1, 0.15, 0)
+)
+
 threshold_class <- function(x) {
   case_when(
     is.na(x) ~ NA_character_,
-    x > 1 ~ ">1 cm",
+    x > 10 ~ ">10 cm",
+    x > 5 ~ "5-10 cm",
+    x > 1 ~ "1-5 cm",
     x > 0.5 ~ ">5 mm to 1 cm",
     x > 0.15 ~ ">1.5 to 5 mm",
     x >= 0 ~ "0 to 1.5 mm",
@@ -83,7 +105,9 @@ threshold_class <- function(x) {
         "0 to 1.5 mm",
         ">1.5 to 5 mm",
         ">5 mm to 1 cm",
-        ">1 cm"
+        "1-5 cm",
+        "5-10 cm",
+        ">10 cm"
       )
     )
 }
@@ -544,7 +568,9 @@ sediment_replicates %>%
       "0 to 1.5 mm" = "#8ecae6",
       ">1.5 to 5 mm" = "#ffb703",
       ">5 mm to 1 cm" = "#fb8500",
-      ">1 cm" = "#d00000"
+      "1-5 cm" = "#d00000",
+      "5-10 cm" = "#9d0208",
+      ">10 cm" = "#370617"
     ),
     drop = FALSE
   ) +
@@ -558,7 +584,36 @@ sediment_replicates %>%
 
 ```{r construction-delta-plot, fig.width=11, fig.height=7}
 sediment_meter_processed %>%
-  filter(survey != "Baseline") %>%
+  filter(survey != "Baseline", transect_type == "Permanent") %>%
+  {
+    meter_grid <- distinct(
+      .,
+      date,
+      survey,
+      survey_n,
+      transect_type,
+      transect,
+      model_sedimentation_class,
+      expected_permanent_length_m
+    ) %>%
+      mutate(meter = map(expected_permanent_length_m, ~ seq(0L, .x))) %>%
+      unnest(meter)
+
+    right_join(
+      .,
+      meter_grid,
+      by = c(
+        "date",
+        "survey",
+        "survey_n",
+        "transect_type",
+        "transect",
+        "model_sedimentation_class",
+        "expected_permanent_length_m",
+        "meter"
+      )
+    )
+  } %>%
   mutate(
     transect = fct_reorder(
       transect,
@@ -566,7 +621,7 @@ sediment_meter_processed %>%
       .fun = min
     )
   ) %>%
-  ggplot(aes(x = meter, y = survey_n, fill = mean_delta_class)) +        # MEAN or MAX
+  ggplot(aes(x = meter, y = survey_n, fill = mean_delta_class)) +
   geom_tile() +
   facet_wrap(~ model_sedimentation_class + transect, scales = "free_x") +
   scale_fill_manual(
@@ -575,14 +630,839 @@ sediment_meter_processed %>%
       "0 to 1.5 mm" = "#8ecae6",
       ">1.5 to 5 mm" = "#ffb703",
       ">5 mm to 1 cm" = "#fb8500",
-      ">1 cm" = "#d00000"
+      "1-5 cm" = "#d00000",
+      "5-10 cm" = "#9d0208",
+      ">10 cm" = "#370617"
     ),
+    na.value = "grey95",
     drop = FALSE
   ) +
   labs(
     x = "Transect meter",
     y = "Construction survey",
-    fill = "Max delta from baseline"
+    fill = "Mean delta from baseline"
   ) +
   theme_classic()
+```
+
+## Reef-scale Construction Delta Summaries
+
+This summarizes construction-period sediment deltas by survey and model
+sedimentation class. Percentages are calculated among measured meter positions;
+unsampled expected meter positions are retained in the tables for coverage
+tracking but omitted from the threshold-composition figure.
+
+```{r reef-delta-summary, fig.width=10, fig.height=6}
+reef_summary_dir <- file.path("analysis", "sedimentation_reef_delta_summary")
+dir.create(reef_summary_dir, showWarnings = FALSE, recursive = TRUE)
+
+threshold_levels <- levels(threshold_class(0))
+threshold_colors <- c(
+  "below baseline" = "grey90",
+  "0 to 1.5 mm" = "#8ecae6",
+  ">1.5 to 5 mm" = "#ffb703",
+  ">5 mm to 1 cm" = "#fb8500",
+  "1-5 cm" = "#d00000",
+  "5-10 cm" = "#9d0208",
+  ">10 cm" = "#370617",
+  "unmeasured" = "grey95"
+)
+
+construction_reef_delta_grid <- sediment_meter_processed %>%
+  filter(survey != "Baseline", transect_type == "Permanent") %>%
+  {
+    meter_grid <- distinct(
+      .,
+      date,
+      survey,
+      survey_n,
+      transect_type,
+      transect,
+      model_sedimentation_class,
+      expected_permanent_length_m
+    ) %>%
+      mutate(meter = map(expected_permanent_length_m, ~ seq(0L, .x))) %>%
+      unnest(meter)
+
+    right_join(
+      .,
+      meter_grid,
+      by = c(
+        "date",
+        "survey",
+        "survey_n",
+        "transect_type",
+        "transect",
+        "model_sedimentation_class",
+        "expected_permanent_length_m",
+        "meter"
+      )
+    )
+  } %>%
+  mutate(
+    mean_delta_class = factor(
+      if_else(
+        is.na(mean_delta_class),
+        "unmeasured",
+        as.character(mean_delta_class)
+      ),
+      levels = c(threshold_levels, "unmeasured")
+    )
+  )
+
+reef_delta_denominators <- construction_reef_delta_grid %>%
+  summarize(
+    survey_start_date = min(date, na.rm = TRUE),
+    survey_end_date = max(date, na.rm = TRUE),
+    survey_dates = paste(sort(unique(date)), collapse = ", "),
+    expected_meter_positions = n(),
+    measured_meter_positions = sum(!is.na(mean_delta_from_baseline_cm)),
+    pct_meter_positions_measured = measured_meter_positions / expected_meter_positions,
+    .by = c(survey, survey_n, model_sedimentation_class)
+  )
+
+reef_delta_summary_by_week_class <- construction_reef_delta_grid %>%
+  filter(!is.na(mean_delta_from_baseline_cm)) %>%
+  summarize(
+    mean_delta_cm = mean(mean_delta_from_baseline_cm),
+    p01_delta_cm = quantile(mean_delta_from_baseline_cm, 0.01),
+    p10_delta_cm = quantile(mean_delta_from_baseline_cm, 0.10),
+    p25_delta_cm = quantile(mean_delta_from_baseline_cm, 0.25),
+    median_delta_cm = median(mean_delta_from_baseline_cm),
+    p75_delta_cm = quantile(mean_delta_from_baseline_cm, 0.75),
+    p90_delta_cm = quantile(mean_delta_from_baseline_cm, 0.90),
+    p99_delta_cm = quantile(mean_delta_from_baseline_cm, 0.99),
+    min_delta_cm = min(mean_delta_from_baseline_cm),
+    max_delta_cm = max(mean_delta_from_baseline_cm),
+    range_delta_cm = max_delta_cm - min_delta_cm,
+    .by = c(survey, survey_n, model_sedimentation_class)
+  ) %>%
+  left_join(
+    reef_delta_denominators,
+    by = c("survey", "survey_n", "model_sedimentation_class")
+  ) %>%
+  arrange(survey_n, model_sedimentation_class)
+
+reef_delta_class_pct_by_week_class <- construction_reef_delta_grid %>%
+  count(
+    survey,
+    survey_n,
+    model_sedimentation_class,
+    mean_delta_class,
+    name = "n_meter_positions"
+  ) %>%
+  left_join(
+    reef_delta_denominators,
+    by = c("survey", "survey_n", "model_sedimentation_class")
+  ) %>%
+  mutate(
+    pct_expected_reef = n_meter_positions / expected_meter_positions,
+    pct_measured_reef = if_else(
+      mean_delta_class == "unmeasured" | measured_meter_positions == 0,
+      NA_real_,
+      n_meter_positions / measured_meter_positions
+    )
+  ) %>%
+  arrange(survey_n, model_sedimentation_class, mean_delta_class)
+
+reef_delta_class_pct_wide <- reef_delta_class_pct_by_week_class %>%
+  filter(mean_delta_class != "unmeasured") %>%
+  transmute(
+    survey,
+    survey_n,
+    survey_start_date,
+    survey_end_date,
+    survey_dates,
+    model_sedimentation_class,
+    mean_delta_class,
+    pct_measured_reef = 100 * pct_measured_reef
+  ) %>%
+  pivot_wider(
+    names_from = mean_delta_class,
+    values_from = pct_measured_reef,
+    values_fill = 0,
+    names_prefix = "pct_measured_"
+  ) %>%
+  arrange(survey_n, model_sedimentation_class)
+
+write_csv(
+  reef_delta_summary_by_week_class,
+  file.path(reef_summary_dir, "reef_delta_summary_by_week_class.csv")
+)
+
+write_csv(
+  reef_delta_class_pct_by_week_class,
+  file.path(reef_summary_dir, "reef_delta_class_pct_by_week_class.csv")
+)
+
+write_csv(
+  reef_delta_class_pct_wide,
+  file.path(reef_summary_dir, "reef_delta_class_pct_wide.csv")
+)
+
+reef_delta_summary_by_week_class
+reef_delta_class_pct_wide
+```
+
+```{r reef-delta-summary-figures, fig.width=11, fig.height=7}
+reef_delta_summary_plot <- reef_delta_summary_by_week_class %>%
+  select(
+    survey_start_date,
+    survey_n,
+    model_sedimentation_class,
+    p01_delta_cm,
+    p10_delta_cm,
+    p25_delta_cm,
+    median_delta_cm,
+    p75_delta_cm,
+    p90_delta_cm,
+    p99_delta_cm
+  ) %>%
+  pivot_longer(
+    ends_with("_delta_cm"),
+    names_to = "delta_percentile",
+    values_to = "delta_cm"
+  ) %>%
+  mutate(
+    delta_percentile = recode(
+      delta_percentile,
+      p01_delta_cm = "1st percentile",
+      p10_delta_cm = "10th percentile",
+      p25_delta_cm = "25th percentile (25% at or below)",
+      median_delta_cm = "Median",
+      p75_delta_cm = "75th percentile (25% at or above)",
+      p90_delta_cm = "90th percentile",
+      p99_delta_cm = "99th percentile"
+    ),
+    delta_percentile = factor(
+      delta_percentile,
+      levels = c(
+        "1st percentile",
+        "10th percentile",
+        "25th percentile (25% at or below)",
+        "Median",
+        "75th percentile (25% at or above)",
+        "90th percentile",
+        "99th percentile"
+      )
+    )
+  ) %>%
+  arrange(model_sedimentation_class, delta_percentile, survey_start_date) %>%
+  mutate(
+    monitoring_gap_days = as.numeric(survey_start_date - lag(survey_start_date)),
+    plot_segment = cumsum(coalesce(monitoring_gap_days > 14, FALSE)),
+    .by = c(model_sedimentation_class, delta_percentile)
+  ) %>%
+  ggplot(aes(x = survey_n, y = delta_cm, color = delta_percentile)) +
+  geom_hline(yintercept = 0, color = "grey75", linewidth = 0.3) +
+  geom_hline(
+    data = model_sedimentation_predictions,
+    aes(yintercept = predicted_total_sedimentation_cm),
+    linetype = "dashed",
+    color = "black",
+    linewidth = 0.4
+  ) +
+  geom_line(aes(group = interaction(delta_percentile, plot_segment)), linewidth = 0.7) +
+  facet_wrap(~ model_sedimentation_class) +
+  scale_color_manual(
+    values = c(
+      "1st percentile" = "#2166ac",
+      "10th percentile" = "#67a9cf",
+      "25th percentile (25% at or below)" = "#d1e5f0",
+      "Median" = "#2a9d8f",
+      "75th percentile (25% at or above)" = "#fb8500",
+      "90th percentile" = "#d00000",
+      "99th percentile" = "#370617"
+    )
+  ) +
+  labs(
+    x = "Construction survey",
+    y = "Sediment delta from baseline (cm)",
+    color = "Measured reef percentile",
+    title = "Construction sediment delta percentiles by model sedimentation class"
+  ) +
+  theme_classic()
+
+reef_delta_class_pct_plot <- reef_delta_class_pct_by_week_class %>%
+  filter(mean_delta_class != "unmeasured") %>%
+  ggplot(aes(x = survey_n, y = pct_measured_reef, fill = mean_delta_class)) +
+  geom_col(width = 0.85) +
+  facet_wrap(~ model_sedimentation_class) +
+  scale_fill_manual(values = threshold_colors, drop = FALSE) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Construction survey",
+    y = "Percent of measured reef meter positions",
+    fill = "Mean delta class",
+    title = "Threshold class composition by model sedimentation class"
+  ) +
+  theme_classic()
+
+ggsave(
+  file.path(reef_summary_dir, "reef_delta_summary_by_week_class.png"),
+  reef_delta_summary_plot,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+
+ggsave(
+  file.path(reef_summary_dir, "reef_delta_class_pct_by_week_class.png"),
+  reef_delta_class_pct_plot,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+
+reef_delta_summary_plot
+reef_delta_class_pct_plot
+```
+
+## Net Positive Exceedance Tests
+
+These tests compare the measured area with positive sedimentation above a
+threshold to the measured area with negative sedimentation below the equivalent
+threshold. The `outside` class is outside the model-predicted sedimentation
+footprint, but it is not treated as an unimpacted reference because it may still
+receive dredging-related sediment. The bootstrap resamples transects within
+each survey and model sedimentation class, so confidence intervals reflect
+transect-level clustering rather than treating every meter as fully independent.
+
+```{r net-positive-exceedance-tests, fig.width=11, fig.height=7}
+set.seed(20260429)
+
+net_exceedance_bootstrap_n <- 1000
+
+net_exceedance_thresholds <- tibble(
+  threshold_cm = c(0.15, 0.5, 1),
+  threshold_label = factor(
+    c("0.15 cm (1.5 mm)", "0.5 cm", "1.0 cm"),
+    levels = c("0.15 cm (1.5 mm)", "0.5 cm", "1.0 cm")
+  )
+)
+
+bootstrap_net_exceedance <- function(data, threshold_cm, n_boot) {
+  transects <- sort(unique(data$transect))
+
+  map_dfr(seq_len(n_boot), function(boot_i) {
+    boot_delta <- sample(transects, length(transects), replace = TRUE) %>%
+      map(~ data$mean_delta_from_baseline_cm[data$transect == .x]) %>%
+      list_c()
+
+    tibble(
+      boot_i = boot_i,
+      positive_area = mean(boot_delta >= threshold_cm),
+      negative_area = mean(boot_delta <= -threshold_cm),
+      net_positive_area = positive_area - negative_area
+    )
+  })
+}
+
+construction_measured_deltas <- construction_reef_delta_grid %>%
+  filter(!is.na(mean_delta_from_baseline_cm))
+
+net_exceedance_observed <- construction_measured_deltas %>%
+  cross_join(net_exceedance_thresholds) %>%
+  summarize(
+    survey_start_date = min(date, na.rm = TRUE),
+    survey_end_date = max(date, na.rm = TRUE),
+    survey_dates = paste(sort(unique(date)), collapse = ", "),
+    measured_meter_positions = n(),
+    n_transects = n_distinct(transect),
+    positive_meter_positions = sum(mean_delta_from_baseline_cm >= threshold_cm),
+    negative_meter_positions = sum(mean_delta_from_baseline_cm <= -threshold_cm),
+    positive_area = positive_meter_positions / measured_meter_positions,
+    negative_area = negative_meter_positions / measured_meter_positions,
+    net_positive_area = positive_area - negative_area,
+    .by = c(
+      survey,
+      survey_n,
+      model_sedimentation_class,
+      threshold_cm,
+      threshold_label
+    )
+  )
+
+net_exceedance_bootstrap <- construction_measured_deltas %>%
+  cross_join(net_exceedance_thresholds) %>%
+  group_by(survey, survey_n, model_sedimentation_class, threshold_cm, threshold_label) %>%
+  group_modify(
+    ~ bootstrap_net_exceedance(
+      .x,
+      threshold_cm = .y$threshold_cm,
+      n_boot = net_exceedance_bootstrap_n
+    )
+  ) %>%
+  ungroup()
+
+net_exceedance_ci <- net_exceedance_bootstrap %>%
+  summarize(
+    net_positive_area_lcl = quantile(net_positive_area, 0.025),
+    net_positive_area_ucl = quantile(net_positive_area, 0.975),
+    .by = c(
+      survey,
+      survey_n,
+      model_sedimentation_class,
+      threshold_cm,
+      threshold_label
+    )
+  )
+
+net_exceedance_by_week_class <- net_exceedance_observed %>%
+  left_join(
+    net_exceedance_ci,
+    by = c(
+      "survey",
+      "survey_n",
+      "model_sedimentation_class",
+      "threshold_cm",
+      "threshold_label"
+    )
+  ) %>%
+  mutate(
+    ci_note = if_else(
+      n_transects < 3,
+      "CI not estimated: fewer than 3 transects",
+      "Transect bootstrap CI"
+    ),
+    across(
+      c(net_positive_area_lcl, net_positive_area_ucl),
+      ~ if_else(n_transects < 3, NA_real_, .x)
+    ),
+    evidence_positive_asymmetry = net_positive_area_lcl > 0
+  ) %>%
+  arrange(survey_n, model_sedimentation_class, threshold_cm)
+
+write_csv(
+  net_exceedance_by_week_class,
+  file.path(reef_summary_dir, "net_positive_exceedance_by_week_class.csv")
+)
+
+net_exceedance_by_week_class
+```
+
+```{r net-positive-exceedance-figures, fig.width=11, fig.height=7}
+net_exceedance_threshold_plot_data <- net_exceedance_by_week_class %>%
+  filter(threshold_cm %in% c(0.15, 1.0)) %>%
+  arrange(model_sedimentation_class, threshold_label, survey_start_date) %>%
+  mutate(
+    monitoring_gap_days = as.numeric(survey_start_date - lag(survey_start_date)),
+    plot_segment = cumsum(coalesce(monitoring_gap_days > 14, FALSE)),
+    .by = c(model_sedimentation_class, threshold_label)
+  )
+
+positive_asymmetry_annotations <- net_exceedance_threshold_plot_data %>%
+  filter(evidence_positive_asymmetry) %>%
+  mutate(annotation_y = net_positive_area_ucl)
+
+net_exceedance_threshold_plot <- net_exceedance_threshold_plot_data %>%
+  ggplot(aes(x = survey_n, y = net_positive_area, color = threshold_label)) +
+  geom_hline(yintercept = 0, color = "grey70", linewidth = 0.3) +
+  geom_ribbon(
+    data = ~ filter(.x, !is.na(net_positive_area_lcl), !is.na(net_positive_area_ucl)),
+    aes(
+      ymin = net_positive_area_lcl,
+      ymax = net_positive_area_ucl,
+      fill = threshold_label,
+      group = interaction(threshold_label, plot_segment)
+    ),
+    alpha = 0.14,
+    color = NA
+  ) +
+  geom_line(
+    aes(group = interaction(threshold_label, plot_segment)),
+    linewidth = 0.8
+  ) +
+  geom_text(
+    data = positive_asymmetry_annotations,
+    aes(x = survey_n, y = annotation_y, label = "*"),
+    color = "black",
+    vjust = -0.35,
+    size = 4,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ model_sedimentation_class) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(
+    values = c(
+      "0.15 cm (1.5 mm)" = "#fb8500",
+      "1.0 cm" = "#d00000"
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      "0.15 cm (1.5 mm)" = "#fb8500",
+      "1.0 cm" = "#d00000"
+    )
+  ) +
+  labs(
+    x = "Construction survey",
+    y = "Net measured reef area",
+    color = "Delta threshold",
+    fill = "Delta threshold",
+    title = "Net positive exceedance area by predicted sedimentation class",
+    caption = "* Bootstrap CI for net positive area is entirely above zero"
+  ) +
+  theme_classic()
+
+ggsave(
+  file.path(reef_summary_dir, "net_positive_exceedance_by_week_class.png"),
+  net_exceedance_threshold_plot,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+
+net_exceedance_threshold_plot
+
+net_exceedance_by_week_class %>% filter(evidence_positive_asymmetry)
+```
+
+## Exploratory Attribution Analyses
+
+The net-positive exceedance summaries are useful screening tools, but they are
+not a complete attribution analysis. The following sections explore complementary
+ways to ask whether construction-period deltas show directional sediment
+accumulation. These are deliberately exploratory: each method answers a slightly
+different question and has different assumptions.
+
+### Transect-level Net Exceedance Tests
+
+This repeats the threshold asymmetry analysis using transects as the analysis
+unit. For each survey, predicted sedimentation class, threshold, and transect,
+it calculates the transect-level net positive area. It then tests whether the
+transect-level values are centered above zero. This is statistically cleaner
+than treating meters as independent, but power is limited when a class has only
+one or two transects.
+
+```{r transect-level-net-exceedance-tests}
+transect_net_exceedance <- construction_measured_deltas %>%
+  cross_join(net_exceedance_thresholds) %>%
+  summarize(
+    n_meters = n(),
+    positive_meter_positions = sum(mean_delta_from_baseline_cm >= threshold_cm),
+    negative_meter_positions = sum(mean_delta_from_baseline_cm <= -threshold_cm),
+    positive_area = positive_meter_positions / n_meters,
+    negative_area = negative_meter_positions / n_meters,
+    net_positive_area = positive_area - negative_area,
+    .by = c(
+      survey,
+      survey_n,
+      model_sedimentation_class,
+      threshold_cm,
+      threshold_label,
+      transect
+    )
+  )
+
+transect_net_test <- function(data) {
+  nonzero_net <- data$net_positive_area[data$net_positive_area != 0]
+  n_positive <- sum(data$net_positive_area > 0)
+  n_negative <- sum(data$net_positive_area < 0)
+
+  tibble(
+    n_transects = n_distinct(data$transect),
+    mean_transect_net_positive_area = mean(data$net_positive_area),
+    median_transect_net_positive_area = median(data$net_positive_area),
+    n_transects_positive = n_positive,
+    n_transects_negative = n_negative,
+    sign_test_p_value = if (length(nonzero_net) >= 3) {
+      binom.test(
+        n_positive,
+        n_positive + n_negative,
+        p = 0.5,
+        alternative = "greater"
+      )$p.value
+    } else {
+      NA_real_
+    },
+    wilcox_p_value = if (length(nonzero_net) >= 3) {
+      wilcox.test(
+        data$net_positive_area,
+        mu = 0,
+        alternative = "greater",
+        exact = FALSE
+      )$p.value
+    } else {
+      NA_real_
+    },
+    test_note = if_else(
+      n_transects < 3,
+      "Not enough transects for a useful transect-level test",
+      "Exploratory one-sided tests of transect-level net positive area > 0"
+    )
+  )
+}
+
+transect_net_exceedance_tests <- transect_net_exceedance %>%
+  group_by(survey, survey_n, model_sedimentation_class, threshold_cm, threshold_label) %>%
+  group_modify(~ transect_net_test(.x)) %>%
+  ungroup() %>%
+  arrange(survey_n, model_sedimentation_class, threshold_cm)
+
+write_csv(
+  transect_net_exceedance,
+  file.path(reef_summary_dir, "transect_net_exceedance.csv")
+)
+
+write_csv(
+  transect_net_exceedance_tests,
+  file.path(reef_summary_dir, "transect_net_exceedance_tests.csv")
+)
+
+transect_net_exceedance_tests
+```
+
+### Week-specific Delta Percentile Tests
+
+This approach keeps construction survey as a time series rather than fitting a
+single linear trend. For each survey and predicted sedimentation class, it
+estimates selected meter-level delta percentiles and bootstraps confidence
+intervals by resampling transects. The one-sided evidence flag asks whether a
+given percentile is above zero for that specific survey. For example, if the
+90th percentile is above zero, then the upper 10% of measured reef meters have
+positive deltas at that time point. Confidence intervals are not estimated when
+fewer than three transects are available in a survey/class group.
+
+```{r week-specific-delta-percentile-tests, fig.width=11, fig.height=7}
+week_delta_percentile_bootstrap_n <- 1000
+
+week_delta_percentile_probs <- tibble(
+  percentile_prob = c(0.50, 0.75, 0.90, 0.95),
+  percentile_label = factor(
+    c("Median", "75th percentile", "90th percentile", "95th percentile"),
+    levels = c("Median", "75th percentile", "90th percentile", "95th percentile")
+  )
+)
+
+summarize_delta_percentiles <- function(delta) {
+  tibble(
+    percentile_prob = week_delta_percentile_probs$percentile_prob,
+    percentile_label = week_delta_percentile_probs$percentile_label,
+    delta_cm = as.numeric(
+      quantile(
+        delta,
+        probs = week_delta_percentile_probs$percentile_prob,
+        names = FALSE
+      )
+    )
+  )
+}
+
+bootstrap_delta_percentiles <- function(data, n_boot) {
+  transects <- sort(unique(data$transect))
+
+  map_dfr(seq_len(n_boot), function(boot_i) {
+    boot_delta <- sample(transects, length(transects), replace = TRUE) %>%
+      map(~ data$mean_delta_from_baseline_cm[data$transect == .x]) %>%
+      list_c()
+
+    summarize_delta_percentiles(boot_delta) %>%
+      mutate(boot_i = boot_i, .before = 1)
+  })
+}
+
+week_delta_percentile_observed <- construction_measured_deltas %>%
+  summarize(
+    survey_start_date = min(date, na.rm = TRUE),
+    survey_end_date = max(date, na.rm = TRUE),
+    survey_dates = paste(sort(unique(date)), collapse = ", "),
+    measured_meter_positions = n(),
+    n_transects = n_distinct(transect),
+    delta_percentiles = list(summarize_delta_percentiles(mean_delta_from_baseline_cm)),
+    .by = c(survey, survey_n, model_sedimentation_class)
+  ) %>%
+  unnest(delta_percentiles)
+
+week_delta_percentile_bootstrap <- construction_measured_deltas %>%
+  group_by(survey, survey_n, model_sedimentation_class) %>%
+  group_modify(~ bootstrap_delta_percentiles(.x, week_delta_percentile_bootstrap_n)) %>%
+  ungroup()
+
+week_delta_percentile_ci <- week_delta_percentile_bootstrap %>%
+  summarize(
+    delta_cm_lcl = quantile(delta_cm, 0.025),
+    delta_cm_ucl = quantile(delta_cm, 0.975),
+    .by = c(survey, survey_n, model_sedimentation_class, percentile_prob, percentile_label)
+  )
+
+week_delta_percentile_tests <- week_delta_percentile_observed %>%
+  left_join(
+    week_delta_percentile_ci,
+    by = c(
+      "survey",
+      "survey_n",
+      "model_sedimentation_class",
+      "percentile_prob",
+      "percentile_label"
+    )
+  ) %>%
+  mutate(
+    ci_note = if_else(
+      n_transects < 3,
+      "CI not estimated: fewer than 3 transects",
+      "Transect bootstrap CI"
+    ),
+    across(
+      c(delta_cm_lcl, delta_cm_ucl),
+      ~ if_else(n_transects < 3, NA_real_, .x)
+    ),
+    evidence_delta_above_zero = delta_cm_lcl > 0
+  ) %>%
+  arrange(survey_n, model_sedimentation_class, percentile_prob)
+
+week_delta_percentile_plot_data <- week_delta_percentile_tests %>%
+  arrange(model_sedimentation_class, percentile_label, survey_start_date) %>%
+  mutate(
+    monitoring_gap_days = as.numeric(survey_start_date - lag(survey_start_date)),
+    plot_segment = cumsum(coalesce(monitoring_gap_days > 14, FALSE)),
+    .by = c(model_sedimentation_class, percentile_label)
+  )
+
+week_delta_percentile_annotations <- week_delta_percentile_plot_data %>%
+  filter(evidence_delta_above_zero) %>%
+  mutate(annotation_y = delta_cm_ucl)
+
+week_delta_percentile_plot <- week_delta_percentile_plot_data %>%
+  ggplot(aes(x = survey_n, y = delta_cm, color = percentile_label)) +
+  geom_hline(yintercept = 0, color = "grey70", linewidth = 0.3) +
+  geom_ribbon(
+    data = ~ filter(.x, !is.na(delta_cm_lcl), !is.na(delta_cm_ucl)),
+    aes(
+      ymin = delta_cm_lcl,
+      ymax = delta_cm_ucl,
+      fill = percentile_label,
+      group = interaction(percentile_label, plot_segment)
+    ),
+    alpha = 0.12,
+    color = NA
+  ) +
+  geom_line(
+    aes(group = interaction(percentile_label, plot_segment)),
+    linewidth = 0.75
+  ) +
+  geom_text(
+    data = week_delta_percentile_annotations,
+    aes(x = survey_n, y = annotation_y, label = "*"),
+    color = "black",
+    vjust = -0.35,
+    size = 4,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ model_sedimentation_class) +
+  scale_color_manual(
+    values = c(
+      "Median" = "#2a9d8f",
+      "75th percentile" = "#fb8500",
+      "90th percentile" = "#d00000",
+      "95th percentile" = "#370617"
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Median" = "#2a9d8f",
+      "75th percentile" = "#fb8500",
+      "90th percentile" = "#d00000",
+      "95th percentile" = "#370617"
+    )
+  ) +
+  labs(
+    x = "Construction survey",
+    y = "Sediment delta from baseline (cm)",
+    color = "Measured reef percentile",
+    fill = "Measured reef percentile",
+    title = "Week-specific sediment delta percentiles",
+    caption = "* Transect bootstrap CI for percentile is entirely above zero"
+  ) +
+  theme_classic()
+
+write_csv(
+  week_delta_percentile_tests,
+  file.path(reef_summary_dir, "week_delta_percentile_tests.csv")
+)
+
+ggsave(
+  file.path(reef_summary_dir, "week_delta_percentile_tests.png"),
+  week_delta_percentile_plot,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+
+week_delta_percentile_plot
+week_delta_percentile_tests %>% filter(evidence_delta_above_zero)
+```
+
+### Tail Asymmetry Diagnostics
+
+This diagnostic compares matched lower and upper tails in the observed
+distribution. Positive values mean the upper sedimentation tail is larger than
+the corresponding lower sediment-loss tail. For example, `p90_minus_abs_p10_cm`
+is positive when the 90th percentile exceeds the magnitude of the 10th
+percentile.
+
+```{r tail-asymmetry-diagnostics, fig.width=11, fig.height=7}
+tail_asymmetry_by_week_class <- reef_delta_summary_by_week_class %>%
+  transmute(
+    survey,
+    survey_n,
+    survey_start_date,
+    survey_end_date,
+    survey_dates,
+    model_sedimentation_class,
+    p75_minus_abs_p25_cm = p75_delta_cm - abs(p25_delta_cm),
+    p90_minus_abs_p10_cm = p90_delta_cm - abs(p10_delta_cm),
+    p99_minus_abs_p01_cm = p99_delta_cm - abs(p01_delta_cm)
+  ) %>%
+  pivot_longer(
+    ends_with("_cm"),
+    names_to = "tail_contrast",
+    values_to = "upper_tail_excess_cm"
+  ) %>%
+  mutate(
+    tail_contrast = recode(
+      tail_contrast,
+      p75_minus_abs_p25_cm = "75th minus |25th|",
+      p90_minus_abs_p10_cm = "90th minus |10th|",
+      p99_minus_abs_p01_cm = "99th minus |1st|"
+    ),
+    tail_contrast = factor(
+      tail_contrast,
+      levels = c("75th minus |25th|", "90th minus |10th|", "99th minus |1st|")
+    )
+  ) %>%
+  arrange(model_sedimentation_class, tail_contrast, survey_start_date) %>%
+  mutate(
+    monitoring_gap_days = as.numeric(survey_start_date - lag(survey_start_date)),
+    plot_segment = cumsum(coalesce(monitoring_gap_days > 14, FALSE)),
+    .by = c(model_sedimentation_class, tail_contrast)
+  )
+
+tail_asymmetry_plot <- tail_asymmetry_by_week_class %>%
+  ggplot(aes(x = survey_n, y = upper_tail_excess_cm, color = tail_contrast)) +
+  geom_hline(yintercept = 0, color = "grey70", linewidth = 0.3) +
+  geom_line(aes(group = interaction(tail_contrast, plot_segment)), linewidth = 0.7) +
+  facet_wrap(~ model_sedimentation_class) +
+  labs(
+    x = "Construction survey",
+    y = "Upper-tail excess over matched lower tail (cm)",
+    color = "Tail contrast",
+    title = "Sediment-gain tail compared with sediment-loss tail"
+  ) +
+  theme_classic()
+
+write_csv(
+  tail_asymmetry_by_week_class,
+  file.path(reef_summary_dir, "tail_asymmetry_by_week_class.csv")
+)
+
+ggsave(
+  file.path(reef_summary_dir, "tail_asymmetry_by_week_class.png"),
+  tail_asymmetry_plot,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+
+tail_asymmetry_plot
 ```

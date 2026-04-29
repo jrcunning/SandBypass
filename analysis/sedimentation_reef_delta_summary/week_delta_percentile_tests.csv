@@ -1,0 +1,193 @@
+survey,survey_n,model_sedimentation_class,survey_start_date,survey_end_date,survey_dates,measured_meter_positions,n_transects,percentile_prob,percentile_label,delta_cm,delta_cm_lcl,delta_cm_ucl,ci_note,evidence_delta_above_zero
+Con1,1,1.0 cm predicted (dashed red),2025-11-06,2025-11-06,2025-11-06,102,2,0.5,Median,-0.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con1,1,1.0 cm predicted (dashed red),2025-11-06,2025-11-06,2025-11-06,102,2,0.75,75th percentile,0.1666666666666666,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con1,1,1.0 cm predicted (dashed red),2025-11-06,2025-11-06,2025-11-06,102,2,0.9,90th percentile,1,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con1,1,1.0 cm predicted (dashed red),2025-11-06,2025-11-06,2025-11-06,102,2,0.95,95th percentile,2.316666666666663,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con1,1,1.5 mm predicted (solid red),2025-11-06,2025-11-06,2025-11-06,102,2,0.5,Median,-0.08333333333333326,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con1,1,1.5 mm predicted (solid red),2025-11-06,2025-11-06,2025-11-06,102,2,0.75,75th percentile,0.3333333333333333,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con1,1,1.5 mm predicted (solid red),2025-11-06,2025-11-06,2025-11-06,102,2,0.9,90th percentile,0.9833333333333343,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con1,1,1.5 mm predicted (solid red),2025-11-06,2025-11-06,2025-11-06,102,2,0.95,95th percentile,1.1666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con1,1,0 cm predicted (outside),2025-11-06,2025-11-07,"2025-11-06, 2025-11-07",459,9,0.5,Median,-0.16666666666666666,-0.3333333333333333,0,Transect bootstrap CI,FALSE
+Con1,1,0 cm predicted (outside),2025-11-06,2025-11-07,"2025-11-06, 2025-11-07",459,9,0.75,75th percentile,0.16666666666666666,0,0.5,Transect bootstrap CI,FALSE
+Con1,1,0 cm predicted (outside),2025-11-06,2025-11-07,"2025-11-06, 2025-11-07",459,9,0.9,90th percentile,0.8333333333333334,0.5,1.333333333333333,Transect bootstrap CI,TRUE
+Con1,1,0 cm predicted (outside),2025-11-06,2025-11-07,"2025-11-06, 2025-11-07",459,9,0.95,95th percentile,1.3499999999999943,0.6829166666666613,1.6870833333333244,Transect bootstrap CI,TRUE
+Con2,2,1.0 cm predicted (dashed red),2025-11-17,2025-11-17,2025-11-17,102,2,0.5,Median,-0.7499999999999998,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con2,2,1.0 cm predicted (dashed red),2025-11-17,2025-11-17,2025-11-17,102,2,0.75,75th percentile,0.2916666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con2,2,1.0 cm predicted (dashed red),2025-11-17,2025-11-17,2025-11-17,102,2,0.9,90th percentile,1,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con2,2,1.0 cm predicted (dashed red),2025-11-17,2025-11-17,2025-11-17,102,2,0.95,95th percentile,1.8249999999999982,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con2,2,1.5 mm predicted (solid red),2025-11-17,2025-11-17,2025-11-17,102,2,0.5,Median,0,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con2,2,1.5 mm predicted (solid red),2025-11-17,2025-11-17,2025-11-17,102,2,0.75,75th percentile,0.6666666666666666,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con2,2,1.5 mm predicted (solid red),2025-11-17,2025-11-17,2025-11-17,102,2,0.9,90th percentile,1.1666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con2,2,1.5 mm predicted (solid red),2025-11-17,2025-11-17,2025-11-17,102,2,0.95,95th percentile,1.6666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con2,2,0 cm predicted (outside),2025-11-17,2025-11-17,2025-11-17,459,9,0.5,Median,-0.16666666666666674,-0.33333333333333337,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con2,2,0 cm predicted (outside),2025-11-17,2025-11-17,2025-11-17,459,9,0.75,75th percentile,0.08333333333333326,0,0.16666666666666666,Transect bootstrap CI,FALSE
+Con2,2,0 cm predicted (outside),2025-11-17,2025-11-17,2025-11-17,459,9,0.9,90th percentile,0.5,0.3333333333333333,0.7333333333333297,Transect bootstrap CI,TRUE
+Con2,2,0 cm predicted (outside),2025-11-17,2025-11-17,2025-11-17,459,9,0.95,95th percentile,1,0.5,2,Transect bootstrap CI,TRUE
+Con3,3,1.0 cm predicted (dashed red),2025-11-26,2025-11-26,2025-11-26,102,2,0.5,Median,-0.6666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con3,3,1.0 cm predicted (dashed red),2025-11-26,2025-11-26,2025-11-26,102,2,0.75,75th percentile,0,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con3,3,1.0 cm predicted (dashed red),2025-11-26,2025-11-26,2025-11-26,102,2,0.9,90th percentile,1.1500000000000008,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con3,3,1.0 cm predicted (dashed red),2025-11-26,2025-11-26,2025-11-26,102,2,0.95,95th percentile,1.8249999999999982,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con3,3,1.5 mm predicted (solid red),2025-11-26,2025-11-26,2025-11-26,102,2,0.5,Median,0,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con3,3,1.5 mm predicted (solid red),2025-11-26,2025-11-26,2025-11-26,102,2,0.75,75th percentile,0.3333333333333335,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con3,3,1.5 mm predicted (solid red),2025-11-26,2025-11-26,2025-11-26,102,2,0.9,90th percentile,1.1500000000000008,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con3,3,1.5 mm predicted (solid red),2025-11-26,2025-11-26,2025-11-26,102,2,0.95,95th percentile,2.1499999999999964,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con3,3,0 cm predicted (outside),2025-11-26,2025-11-26,2025-11-26,459,9,0.5,Median,-0.16666666666666669,-0.3333333333333333,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con3,3,0 cm predicted (outside),2025-11-26,2025-11-26,2025-11-26,459,9,0.75,75th percentile,0,0,0.16666666666666666,Transect bootstrap CI,FALSE
+Con3,3,0 cm predicted (outside),2025-11-26,2025-11-26,2025-11-26,459,9,0.9,90th percentile,0.5,0.3333333333333333,1,Transect bootstrap CI,TRUE
+Con3,3,0 cm predicted (outside),2025-11-26,2025-11-26,2025-11-26,459,9,0.95,95th percentile,1,0.5,1.3333333333333335,Transect bootstrap CI,TRUE
+Con4,4,1.0 cm predicted (dashed red),2025-12-05,2025-12-05,2025-12-05,102,2,0.5,Median,-0.3333333333333334,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con4,4,1.0 cm predicted (dashed red),2025-12-05,2025-12-05,2025-12-05,102,2,0.75,75th percentile,0.33333333333333337,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con4,4,1.0 cm predicted (dashed red),2025-12-05,2025-12-05,2025-12-05,102,2,0.9,90th percentile,1.3166666666666678,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con4,4,1.0 cm predicted (dashed red),2025-12-05,2025-12-05,2025-12-05,102,2,0.95,95th percentile,2.6499999999999964,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con4,4,1.5 mm predicted (solid red),2025-12-05,2025-12-05,2025-12-05,102,2,0.5,Median,0,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con4,4,1.5 mm predicted (solid red),2025-12-05,2025-12-05,2025-12-05,102,2,0.75,75th percentile,0.45833333333333337,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con4,4,1.5 mm predicted (solid red),2025-12-05,2025-12-05,2025-12-05,102,2,0.9,90th percentile,0.9833333333333345,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con4,4,1.5 mm predicted (solid red),2025-12-05,2025-12-05,2025-12-05,102,2,0.95,95th percentile,1.6666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con4,4,0 cm predicted (outside),2025-12-05,2025-12-05,2025-12-05,459,9,0.5,Median,-0.3333333333333333,-0.33333333333333337,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con4,4,0 cm predicted (outside),2025-12-05,2025-12-05,2025-12-05,459,9,0.75,75th percentile,0,0,0.16666666666666666,Transect bootstrap CI,FALSE
+Con4,4,0 cm predicted (outside),2025-12-05,2025-12-05,2025-12-05,459,9,0.9,90th percentile,0.5,0.3333333333333333,0.8666666666666648,Transect bootstrap CI,TRUE
+Con4,4,0 cm predicted (outside),2025-12-05,2025-12-05,2025-12-05,459,9,0.95,95th percentile,1.1666666666666667,0.5,2.166666666666667,Transect bootstrap CI,TRUE
+Con5,5,1.0 cm predicted (dashed red),2025-12-14,2025-12-14,2025-12-14,51,1,0.5,Median,-1,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con5,5,1.0 cm predicted (dashed red),2025-12-14,2025-12-14,2025-12-14,51,1,0.75,75th percentile,-0.16666666666666666,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con5,5,1.0 cm predicted (dashed red),2025-12-14,2025-12-14,2025-12-14,51,1,0.9,90th percentile,0.16666666666666674,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con5,5,1.0 cm predicted (dashed red),2025-12-14,2025-12-14,2025-12-14,51,1,0.95,95th percentile,1.0833333333333335,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con5,5,1.5 mm predicted (solid red),2025-12-14,2025-12-14,2025-12-14,102,2,0.5,Median,0,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con5,5,1.5 mm predicted (solid red),2025-12-14,2025-12-14,2025-12-14,102,2,0.75,75th percentile,0.33333333333333337,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con5,5,1.5 mm predicted (solid red),2025-12-14,2025-12-14,2025-12-14,102,2,0.9,90th percentile,1.1500000000000008,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con5,5,1.5 mm predicted (solid red),2025-12-14,2025-12-14,2025-12-14,102,2,0.95,95th percentile,1.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con5,5,0 cm predicted (outside),2025-12-14,2025-12-14,2025-12-14,255,5,0.5,Median,-0.16666666666666674,-0.33333333333333337,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con5,5,0 cm predicted (outside),2025-12-14,2025-12-14,2025-12-14,255,5,0.75,75th percentile,0,0,0.16666666666666666,Transect bootstrap CI,FALSE
+Con5,5,0 cm predicted (outside),2025-12-14,2025-12-14,2025-12-14,255,5,0.9,90th percentile,0.3333333333333333,0,0.6666666666666666,Transect bootstrap CI,FALSE
+Con5,5,0 cm predicted (outside),2025-12-14,2025-12-14,2025-12-14,255,5,0.95,95th percentile,0.6666666666666666,0.16666666666666666,1.0999999999999943,Transect bootstrap CI,TRUE
+Con6,6,1.0 cm predicted (dashed red),2025-12-29,2025-12-29,2025-12-29,102,2,0.5,Median,-0.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con6,6,1.0 cm predicted (dashed red),2025-12-29,2025-12-29,2025-12-29,102,2,0.75,75th percentile,0.3333333333333333,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con6,6,1.0 cm predicted (dashed red),2025-12-29,2025-12-29,2025-12-29,102,2,0.9,90th percentile,1.983333333333334,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con6,6,1.0 cm predicted (dashed red),2025-12-29,2025-12-29,2025-12-29,102,2,0.95,95th percentile,2.649999999999997,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con6,6,1.5 mm predicted (solid red),2025-12-29,2025-12-29,2025-12-29,102,2,0.5,Median,0.08333333333333331,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con6,6,1.5 mm predicted (solid red),2025-12-29,2025-12-29,2025-12-29,102,2,0.75,75th percentile,0.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con6,6,1.5 mm predicted (solid red),2025-12-29,2025-12-29,2025-12-29,102,2,0.9,90th percentile,1,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con6,6,1.5 mm predicted (solid red),2025-12-29,2025-12-29,2025-12-29,102,2,0.95,95th percentile,1.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con6,6,0 cm predicted (outside),2025-12-29,2025-12-29,2025-12-29,459,9,0.5,Median,-0.3333333333333333,-0.5,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con6,6,0 cm predicted (outside),2025-12-29,2025-12-29,2025-12-29,459,9,0.75,75th percentile,0,0,0.16666666666666666,Transect bootstrap CI,FALSE
+Con6,6,0 cm predicted (outside),2025-12-29,2025-12-29,2025-12-29,459,9,0.9,90th percentile,0.33333333333333337,0.3333333333333333,0.5,Transect bootstrap CI,TRUE
+Con6,6,0 cm predicted (outside),2025-12-29,2025-12-29,2025-12-29,459,9,0.95,95th percentile,1,0.5,1.1666666666666667,Transect bootstrap CI,TRUE
+Con7,7,1.0 cm predicted (dashed red),2026-01-07,2026-01-07,2026-01-07,102,2,0.5,Median,-0.49999999999999994,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con7,7,1.0 cm predicted (dashed red),2026-01-07,2026-01-07,2026-01-07,102,2,0.75,75th percentile,0.7916666666666664,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con7,7,1.0 cm predicted (dashed red),2026-01-07,2026-01-07,2026-01-07,102,2,0.9,90th percentile,1.666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con7,7,1.0 cm predicted (dashed red),2026-01-07,2026-01-07,2026-01-07,102,2,0.95,95th percentile,3.1499999999999964,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con7,7,1.5 mm predicted (solid red),2026-01-07,2026-01-07,2026-01-07,102,2,0.5,Median,0.16666666666666669,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con7,7,1.5 mm predicted (solid red),2026-01-07,2026-01-07,2026-01-07,102,2,0.75,75th percentile,0.8333333333333334,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con7,7,1.5 mm predicted (solid red),2026-01-07,2026-01-07,2026-01-07,102,2,0.9,90th percentile,1.3333333333333335,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con7,7,1.5 mm predicted (solid red),2026-01-07,2026-01-07,2026-01-07,102,2,0.95,95th percentile,1.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con7,7,0 cm predicted (outside),2026-01-07,2026-01-07,2026-01-07,459,9,0.5,Median,-0.16666666666666669,-0.33333333333333337,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con7,7,0 cm predicted (outside),2026-01-07,2026-01-07,2026-01-07,459,9,0.75,75th percentile,0.16666666666666666,0,0.3333333333333333,Transect bootstrap CI,FALSE
+Con7,7,0 cm predicted (outside),2026-01-07,2026-01-07,2026-01-07,459,9,0.9,90th percentile,0.6999999999999982,0.3333333333333333,1.1666666666666667,Transect bootstrap CI,TRUE
+Con7,7,0 cm predicted (outside),2026-01-07,2026-01-07,2026-01-07,459,9,0.95,95th percentile,1.1666666666666667,0.6666666666666667,2.333333333333333,Transect bootstrap CI,TRUE
+Con8,8,1.0 cm predicted (dashed red),2026-01-15,2026-01-17,"2026-01-15, 2026-01-17",102,2,0.5,Median,-0.16666666666666663,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con8,8,1.0 cm predicted (dashed red),2026-01-15,2026-01-17,"2026-01-15, 2026-01-17",102,2,0.75,75th percentile,0.8333333333333334,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con8,8,1.0 cm predicted (dashed red),2026-01-15,2026-01-17,"2026-01-15, 2026-01-17",102,2,0.9,90th percentile,1.9833333333333343,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con8,8,1.0 cm predicted (dashed red),2026-01-15,2026-01-17,"2026-01-15, 2026-01-17",102,2,0.95,95th percentile,2.6583333333333314,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con8,8,1.5 mm predicted (solid red),2026-01-15,2026-01-17,"2026-01-15, 2026-01-17",102,2,0.5,Median,0.3333333333333333,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con8,8,1.5 mm predicted (solid red),2026-01-15,2026-01-17,"2026-01-15, 2026-01-17",102,2,0.75,75th percentile,1.125,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con8,8,1.5 mm predicted (solid red),2026-01-15,2026-01-17,"2026-01-15, 2026-01-17",102,2,0.9,90th percentile,2.150000000000001,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con8,8,1.5 mm predicted (solid red),2026-01-15,2026-01-17,"2026-01-15, 2026-01-17",102,2,0.95,95th percentile,5.474999999999994,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con8,8,0 cm predicted (outside),2026-01-15,2026-01-15,2026-01-15,459,9,0.5,Median,-0.16666666666666669,-0.3333333333333333,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con8,8,0 cm predicted (outside),2026-01-15,2026-01-15,2026-01-15,459,9,0.75,75th percentile,0.16666666666666666,0,0.3333333333333333,Transect bootstrap CI,FALSE
+Con8,8,0 cm predicted (outside),2026-01-15,2026-01-15,2026-01-15,459,9,0.9,90th percentile,0.6999999999999982,0.5,1.1999999999999982,Transect bootstrap CI,TRUE
+Con8,8,0 cm predicted (outside),2026-01-15,2026-01-15,2026-01-15,459,9,0.95,95th percentile,1.3333333333333335,0.8333333333333333,1.8537499999999913,Transect bootstrap CI,TRUE
+Con9,9,1.0 cm predicted (dashed red),2026-01-24,2026-01-24,2026-01-24,102,2,0.5,Median,0,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con9,9,1.0 cm predicted (dashed red),2026-01-24,2026-01-24,2026-01-24,102,2,0.75,75th percentile,0.7916666666666665,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con9,9,1.0 cm predicted (dashed red),2026-01-24,2026-01-24,2026-01-24,102,2,0.9,90th percentile,1.666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con9,9,1.0 cm predicted (dashed red),2026-01-24,2026-01-24,2026-01-24,102,2,0.95,95th percentile,2.824999999999998,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con9,9,1.5 mm predicted (solid red),2026-01-24,2026-01-24,2026-01-24,51,1,0.5,Median,0.33333333333333337,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con9,9,1.5 mm predicted (solid red),2026-01-24,2026-01-24,2026-01-24,51,1,0.75,75th percentile,1.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con9,9,1.5 mm predicted (solid red),2026-01-24,2026-01-24,2026-01-24,51,1,0.9,90th percentile,6,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con9,9,1.5 mm predicted (solid red),2026-01-24,2026-01-24,2026-01-24,51,1,0.95,95th percentile,9.166666666666668,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con9,9,0 cm predicted (outside),2026-01-24,2026-01-24,2026-01-24,459,9,0.5,Median,-0.16666666666666666,-0.3333333333333333,0,Transect bootstrap CI,FALSE
+Con9,9,0 cm predicted (outside),2026-01-24,2026-01-24,2026-01-24,459,9,0.75,75th percentile,0.3333333333333333,0.16666666666666663,0.6666666666666666,Transect bootstrap CI,TRUE
+Con9,9,0 cm predicted (outside),2026-01-24,2026-01-24,2026-01-24,459,9,0.9,90th percentile,1,0.5,1.366666666666665,Transect bootstrap CI,TRUE
+Con9,9,0 cm predicted (outside),2026-01-24,2026-01-24,2026-01-24,459,9,0.95,95th percentile,1.5,0.8333333333333334,2.333333333333333,Transect bootstrap CI,TRUE
+Con10,10,1.0 cm predicted (dashed red),2026-02-05,2026-02-05,2026-02-05,102,2,0.5,Median,0.16666666666666669,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con10,10,1.0 cm predicted (dashed red),2026-02-05,2026-02-05,2026-02-05,102,2,0.75,75th percentile,1.125,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con10,10,1.0 cm predicted (dashed red),2026-02-05,2026-02-05,2026-02-05,102,2,0.9,90th percentile,2.150000000000001,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con10,10,1.0 cm predicted (dashed red),2026-02-05,2026-02-05,2026-02-05,102,2,0.95,95th percentile,2.833333333333333,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con10,10,1.5 mm predicted (solid red),2026-02-05,2026-02-05,2026-02-05,102,2,0.5,Median,0,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con10,10,1.5 mm predicted (solid red),2026-02-05,2026-02-05,2026-02-05,102,2,0.75,75th percentile,0.6666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con10,10,1.5 mm predicted (solid red),2026-02-05,2026-02-05,2026-02-05,102,2,0.9,90th percentile,1.1666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con10,10,1.5 mm predicted (solid red),2026-02-05,2026-02-05,2026-02-05,102,2,0.95,95th percentile,1.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con10,10,0 cm predicted (outside),2026-02-05,2026-02-05,2026-02-05,459,9,0.5,Median,-0.16666666666666669,-0.33333333333333337,-0.16666666666666663,Transect bootstrap CI,FALSE
+Con10,10,0 cm predicted (outside),2026-02-05,2026-02-05,2026-02-05,459,9,0.75,75th percentile,0.16666666666666666,0,0.33333333333333337,Transect bootstrap CI,FALSE
+Con10,10,0 cm predicted (outside),2026-02-05,2026-02-05,2026-02-05,459,9,0.9,90th percentile,0.8333333333333334,0.5,1.3666666666666647,Transect bootstrap CI,TRUE
+Con10,10,0 cm predicted (outside),2026-02-05,2026-02-05,2026-02-05,459,9,0.95,95th percentile,1.5,0.8333333333333335,2.516666666666661,Transect bootstrap CI,TRUE
+Con11,11,1.0 cm predicted (dashed red),2026-02-12,2026-02-12,2026-02-12,102,2,0.5,Median,0.1666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con11,11,1.0 cm predicted (dashed red),2026-02-12,2026-02-12,2026-02-12,102,2,0.75,75th percentile,1.1666666666666665,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con11,11,1.0 cm predicted (dashed red),2026-02-12,2026-02-12,2026-02-12,102,2,0.9,90th percentile,2,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con11,11,1.0 cm predicted (dashed red),2026-02-12,2026-02-12,2026-02-12,102,2,0.95,95th percentile,2.491666666666665,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con11,11,1.5 mm predicted (solid red),2026-02-12,2026-02-12,2026-02-12,102,2,0.5,Median,0.1666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con11,11,1.5 mm predicted (solid red),2026-02-12,2026-02-12,2026-02-12,102,2,0.75,75th percentile,0.6666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con11,11,1.5 mm predicted (solid red),2026-02-12,2026-02-12,2026-02-12,102,2,0.9,90th percentile,1.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con11,11,1.5 mm predicted (solid red),2026-02-12,2026-02-12,2026-02-12,102,2,0.95,95th percentile,2,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con11,11,0 cm predicted (outside),2026-02-12,2026-02-12,2026-02-12,459,9,0.5,Median,-0.16666666666666666,-0.3333333333333333,0,Transect bootstrap CI,FALSE
+Con11,11,0 cm predicted (outside),2026-02-12,2026-02-12,2026-02-12,459,9,0.75,75th percentile,0.16666666666666669,0,0.33333333333333337,Transect bootstrap CI,FALSE
+Con11,11,0 cm predicted (outside),2026-02-12,2026-02-12,2026-02-12,459,9,0.9,90th percentile,0.8333333333333334,0.5,1.333333333333333,Transect bootstrap CI,TRUE
+Con11,11,0 cm predicted (outside),2026-02-12,2026-02-12,2026-02-12,459,9,0.95,95th percentile,1.3333333333333335,0.8333333333333334,2.6666666666666665,Transect bootstrap CI,TRUE
+Con12,12,1.0 cm predicted (dashed red),2026-02-20,2026-02-20,2026-02-20,102,2,0.5,Median,-0.2500000000000001,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con12,12,1.0 cm predicted (dashed red),2026-02-20,2026-02-20,2026-02-20,102,2,0.75,75th percentile,0.3333333333333335,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con12,12,1.0 cm predicted (dashed red),2026-02-20,2026-02-20,2026-02-20,102,2,0.9,90th percentile,1.6666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con12,12,1.0 cm predicted (dashed red),2026-02-20,2026-02-20,2026-02-20,102,2,0.95,95th percentile,2.4916666666666654,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con12,12,1.5 mm predicted (solid red),2026-02-20,2026-02-20,2026-02-20,102,2,0.5,Median,0.16666666666666666,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con12,12,1.5 mm predicted (solid red),2026-02-20,2026-02-20,2026-02-20,102,2,0.75,75th percentile,0.6666666666666666,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con12,12,1.5 mm predicted (solid red),2026-02-20,2026-02-20,2026-02-20,102,2,0.9,90th percentile,1.9833333333333343,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con12,12,1.5 mm predicted (solid red),2026-02-20,2026-02-20,2026-02-20,102,2,0.95,95th percentile,2.9833333333333294,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con12,12,0 cm predicted (outside),2026-02-20,2026-02-20,2026-02-20,459,9,0.5,Median,-0.16666666666666669,-0.3333333333333333,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con12,12,0 cm predicted (outside),2026-02-20,2026-02-20,2026-02-20,459,9,0.75,75th percentile,0.16666666666666657,0,0.16666666666666674,Transect bootstrap CI,FALSE
+Con12,12,0 cm predicted (outside),2026-02-20,2026-02-20,2026-02-20,459,9,0.9,90th percentile,0.5,0.33333333333333337,0.8333333333333334,Transect bootstrap CI,TRUE
+Con12,12,0 cm predicted (outside),2026-02-20,2026-02-20,2026-02-20,459,9,0.95,95th percentile,1,0.6666666666666666,1.3333333333333335,Transect bootstrap CI,TRUE
+Con20,20,1.0 cm predicted (dashed red),2026-03-10,2026-03-10,2026-03-10,102,2,0.5,Median,-0.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con20,20,1.0 cm predicted (dashed red),2026-03-10,2026-03-10,2026-03-10,102,2,0.75,75th percentile,0.33333333333333337,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con20,20,1.0 cm predicted (dashed red),2026-03-10,2026-03-10,2026-03-10,102,2,0.9,90th percentile,1.4833333333333343,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con20,20,1.0 cm predicted (dashed red),2026-03-10,2026-03-10,2026-03-10,102,2,0.95,95th percentile,2.1499999999999964,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con20,20,1.5 mm predicted (solid red),2026-03-10,2026-03-10,2026-03-10,102,2,0.5,Median,0.16666666666666666,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con20,20,1.5 mm predicted (solid red),2026-03-10,2026-03-10,2026-03-10,102,2,0.75,75th percentile,0.6666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con20,20,1.5 mm predicted (solid red),2026-03-10,2026-03-10,2026-03-10,102,2,0.9,90th percentile,1.300000000000002,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con20,20,1.5 mm predicted (solid red),2026-03-10,2026-03-10,2026-03-10,102,2,0.95,95th percentile,2.1583333333333314,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con20,20,0 cm predicted (outside),2026-03-10,2026-03-10,2026-03-10,459,9,0.5,Median,-0.16666666666666666,-0.33333333333333304,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con20,20,0 cm predicted (outside),2026-03-10,2026-03-10,2026-03-10,459,9,0.75,75th percentile,0.16666666666666669,0.16666666666666666,0.3333333333333333,Transect bootstrap CI,TRUE
+Con20,20,0 cm predicted (outside),2026-03-10,2026-03-10,2026-03-10,459,9,0.9,90th percentile,0.6666666666666667,0.5,0.9999999999999996,Transect bootstrap CI,TRUE
+Con20,20,0 cm predicted (outside),2026-03-10,2026-03-10,2026-03-10,459,9,0.95,95th percentile,1.1666666666666667,0.6666666666666667,1.6666666666666667,Transect bootstrap CI,TRUE
+Con22,22,1.0 cm predicted (dashed red),2026-03-24,2026-03-24,2026-03-24,102,2,0.5,Median,-0.3333333333333334,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con22,22,1.0 cm predicted (dashed red),2026-03-24,2026-03-24,2026-03-24,102,2,0.75,75th percentile,0.29166666666666663,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con22,22,1.0 cm predicted (dashed red),2026-03-24,2026-03-24,2026-03-24,102,2,0.9,90th percentile,1.150000000000001,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con22,22,1.0 cm predicted (dashed red),2026-03-24,2026-03-24,2026-03-24,102,2,0.95,95th percentile,1.4916666666666643,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con22,22,1.5 mm predicted (solid red),2026-03-24,2026-03-24,2026-03-24,102,2,0.5,Median,0.16666666666666663,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con22,22,1.5 mm predicted (solid red),2026-03-24,2026-03-24,2026-03-24,102,2,0.75,75th percentile,0.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con22,22,1.5 mm predicted (solid red),2026-03-24,2026-03-24,2026-03-24,102,2,0.9,90th percentile,1.1666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con22,22,1.5 mm predicted (solid red),2026-03-24,2026-03-24,2026-03-24,102,2,0.95,95th percentile,2.9833333333333294,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con22,22,0 cm predicted (outside),2026-03-24,2026-03-24,2026-03-24,459,9,0.5,Median,-0.16666666666666652,-0.16666666666666666,0,Transect bootstrap CI,FALSE
+Con22,22,0 cm predicted (outside),2026-03-24,2026-03-24,2026-03-24,459,9,0.75,75th percentile,0.33333333333333337,0.16666666666666669,0.5,Transect bootstrap CI,TRUE
+Con22,22,0 cm predicted (outside),2026-03-24,2026-03-24,2026-03-24,459,9,0.9,90th percentile,0.8666666666666647,0.5333333333333315,1.3333333333333333,Transect bootstrap CI,TRUE
+Con22,22,0 cm predicted (outside),2026-03-24,2026-03-24,2026-03-24,459,9,0.95,95th percentile,1.3333333333333333,1,2,Transect bootstrap CI,TRUE
+Con24,24,1.0 cm predicted (dashed red),2026-04-07,2026-04-07,2026-04-07,102,2,0.5,Median,-0.41666666666666663,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con24,24,1.0 cm predicted (dashed red),2026-04-07,2026-04-07,2026-04-07,102,2,0.75,75th percentile,0.3333333333333333,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con24,24,1.0 cm predicted (dashed red),2026-04-07,2026-04-07,2026-04-07,102,2,0.9,90th percentile,1.3166666666666675,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con24,24,1.0 cm predicted (dashed red),2026-04-07,2026-04-07,2026-04-07,102,2,0.95,95th percentile,2,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con24,24,1.5 mm predicted (solid red),2026-04-07,2026-04-07,2026-04-07,102,2,0.5,Median,-0.08333333333333331,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con24,24,1.5 mm predicted (solid red),2026-04-07,2026-04-07,2026-04-07,102,2,0.75,75th percentile,0.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con24,24,1.5 mm predicted (solid red),2026-04-07,2026-04-07,2026-04-07,102,2,0.9,90th percentile,1,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con24,24,1.5 mm predicted (solid red),2026-04-07,2026-04-07,2026-04-07,102,2,0.95,95th percentile,1.1666666666666667,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con24,24,0 cm predicted (outside),2026-04-07,2026-04-07,2026-04-07,408,8,0.5,Median,-0.25,-0.33333333333333337,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con24,24,0 cm predicted (outside),2026-04-07,2026-04-07,2026-04-07,408,8,0.75,75th percentile,0.16666666666666666,0,0.16666666666666674,Transect bootstrap CI,FALSE
+Con24,24,0 cm predicted (outside),2026-04-07,2026-04-07,2026-04-07,408,8,0.9,90th percentile,0.6666666666666667,0.3333333333333333,1.0500000000000018,Transect bootstrap CI,TRUE
+Con24,24,0 cm predicted (outside),2026-04-07,2026-04-07,2026-04-07,408,8,0.95,95th percentile,1.2749999999999961,0.5,1.6666666666666667,Transect bootstrap CI,TRUE
+Con25,25,1.0 cm predicted (dashed red),2026-04-16,2026-04-17,"2026-04-16, 2026-04-17",102,2,0.5,Median,-0.6666666666666666,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con25,25,1.0 cm predicted (dashed red),2026-04-16,2026-04-17,"2026-04-16, 2026-04-17",102,2,0.75,75th percentile,0.3333333333333332,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con25,25,1.0 cm predicted (dashed red),2026-04-16,2026-04-17,"2026-04-16, 2026-04-17",102,2,0.9,90th percentile,1.3166666666666678,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con25,25,1.0 cm predicted (dashed red),2026-04-16,2026-04-17,"2026-04-16, 2026-04-17",102,2,0.95,95th percentile,1.9833333333333296,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con25,25,1.5 mm predicted (solid red),2026-04-17,2026-04-17,2026-04-17,102,2,0.5,Median,-0.16666666666666669,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con25,25,1.5 mm predicted (solid red),2026-04-17,2026-04-17,2026-04-17,102,2,0.75,75th percentile,0.16666666666666666,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con25,25,1.5 mm predicted (solid red),2026-04-17,2026-04-17,2026-04-17,102,2,0.9,90th percentile,0.5,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con25,25,1.5 mm predicted (solid red),2026-04-17,2026-04-17,2026-04-17,102,2,0.95,95th percentile,0.8333333333333335,NA,NA,CI not estimated: fewer than 3 transects,NA
+Con25,25,0 cm predicted (outside),2026-04-16,2026-04-17,"2026-04-16, 2026-04-17",459,9,0.5,Median,-0.3333333333333333,-0.5,-0.16666666666666666,Transect bootstrap CI,FALSE
+Con25,25,0 cm predicted (outside),2026-04-16,2026-04-17,"2026-04-16, 2026-04-17",459,9,0.75,75th percentile,0,0,0.16666666666666657,Transect bootstrap CI,FALSE
+Con25,25,0 cm predicted (outside),2026-04-16,2026-04-17,"2026-04-16, 2026-04-17",459,9,0.9,90th percentile,0.5,0.16666666666666669,1,Transect bootstrap CI,TRUE
+Con25,25,0 cm predicted (outside),2026-04-16,2026-04-17,"2026-04-16, 2026-04-17",459,9,0.95,95th percentile,1.1666666666666665,0.5,1.6666666666666665,Transect bootstrap CI,TRUE
