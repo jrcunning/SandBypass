@@ -1,0 +1,544 @@
+---
+title: "Sedimentation Monitoring"
+author: "Ross Cunning"
+date: "2026-04-29"
+output: html_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(lubridate)
+```
+
+## Import
+
+```{r paths}
+sediment_dir <- "data/sedimentation_monitoring"
+processed_dir <- "data/processed"
+audit_dir <- "analysis/sedimentation_raw_data_audit"
+
+dir.create(processed_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(audit_dir, showWarnings = FALSE, recursive = TRUE)
+
+gps_file <- file.path(sediment_dir, "PE_SB_Station_Transect_GPS.xlsx")
+
+sediment_files <- list.files(
+  sediment_dir,
+  pattern = "xlsx$",
+  recursive = TRUE,
+  full.names = TRUE
+) %>%
+  discard(~ basename(.x) == basename(gps_file))
+```
+
+```{r helpers}
+excel_date <- function(x) {
+  if (inherits(x, "Date")) return(x)
+  if (inherits(x, "POSIXt")) return(as.Date(x))
+
+  suppressWarnings(as.Date(as.numeric(x), origin = "1899-12-30"))
+}
+
+survey_number <- function(x) {
+  if_else(
+    x == "Baseline",
+    0L,
+    suppressWarnings(as.integer(str_extract(x, "\\d+")))
+  )
+}
+
+normalize_transect_id <- function(x) {
+  x %>%
+    str_squish() %>%
+    str_replace_all("\\s+", "_")
+}
+
+threshold_class <- function(x) {
+  case_when(
+    is.na(x) ~ NA_character_,
+    x > 1 ~ ">1 cm",
+    x > 0.5 ~ ">5 mm to 1 cm",
+    x > 0.15 ~ ">1.5 to 5 mm",
+    x >= 0 ~ "0 to 1.5 mm",
+    TRUE ~ "below baseline"
+  ) %>%
+    factor(
+      levels = c(
+        "below baseline",
+        "0 to 1.5 mm",
+        ">1.5 to 5 mm",
+        ">5 mm to 1 cm",
+        ">1 cm"
+      )
+    )
+}
+
+read_sediment_raw <- function(path) {
+  read_excel(path, sheet = "SedimentDepth_RawData", guess_max = 20000) %>%
+    clean_names() %>%
+    mutate(
+      source_file = path,
+      source_file_name = basename(path),
+      source_modified = file.info(path)$mtime,
+      monitoring_phase = case_when(
+        str_detect(path, "1_Pre-Construction") ~ "pre_construction",
+        str_detect(path, "2_During-Construction") ~ "during_construction",
+        TRUE ~ "unknown"
+      ),
+      monitoring_type = case_when(
+        str_detect(path, "Weekly Monitoring") ~ "weekly",
+        str_detect(path, "Exceedance Triggered Monitoring") ~ "exceedance_triggered",
+        TRUE ~ "compiled"
+      ),
+      date = excel_date(date),
+      survey = str_squish(survey),
+      survey_n = survey_number(survey),
+      transect_type = str_squish(transect_type),
+      transect = normalize_transect_id(transect),
+      meter = as.integer(meter),
+      across(starts_with("sed_depth_cm_"), as.numeric)
+    )
+}
+```
+
+## GPS Lookup
+
+```{r gps}
+hardbottom_gps <- read_excel(gps_file, sheet = "Hardbottom") %>%
+  clean_names() %>%
+  transmute(
+    habitat = "hardbottom",
+    transect = normalize_transect_id(str_remove(station_transect_id, "\\s+\\d+m$")),
+    meter = as.integer(str_extract(station_transect_id, "\\d+(?=m$)")),
+    gps_note = notes,
+    lat_dd,
+    lon_dd
+  ) %>%
+  filter(!is.na(transect), !is.na(meter))
+
+seagrass_gps <- read_excel(gps_file, sheet = "Seagrass") %>%
+  clean_names() %>%
+  transmute(
+    habitat = "seagrass",
+    transect = normalize_transect_id(name),
+    meter = NA_integer_,
+    gps_note = location,
+    lat_dd,
+    lon_dd
+  )
+
+transect_meter_gps <- hardbottom_gps %>%
+  filter(n() > 1, .by = transect) %>%
+  arrange(transect, meter) %>%
+  group_by(transect) %>%
+  group_modify(~ {
+    meter_seq <- seq(min(.x$meter), max(.x$meter))
+
+    tibble(
+      meter = meter_seq,
+      lat_dd = approx(.x$meter, .x$lat_dd, xout = meter_seq, rule = 2)$y,
+      lon_dd = approx(.x$meter, .x$lon_dd, xout = meter_seq, rule = 2)$y
+    )
+  }) %>%
+  ungroup()
+```
+
+## Raw Sediment Data
+
+The monitoring workbooks are cumulative, so later files repeat earlier surveys.
+After reading all workbooks, this keeps the most recent source for each
+survey/transect/meter record while retaining source metadata for traceability.
+
+```{r sediment-raw}
+sediment_raw_sources <- map_dfr(sediment_files, read_sediment_raw) %>%
+  mutate(
+    source_max_survey_n = max(survey_n, na.rm = TRUE),
+    n_replicates_present = rowSums(!is.na(pick(starts_with("sed_depth_cm_")))),
+    .by = source_file
+  )
+
+sediment_raw <- sediment_raw_sources %>%
+  arrange(desc(source_max_survey_n), desc(source_modified), source_file_name) %>%
+  distinct(
+    date,
+    survey,
+    survey_n,
+    transect_type,
+    transect,
+    meter,
+    sed_depth_cm_1,
+    sed_depth_cm_2,
+    sed_depth_cm_3,
+    .keep_all = TRUE
+  ) %>%
+  arrange(survey_n, transect, meter)
+
+sediment_replicates <- sediment_raw %>%
+  pivot_longer(
+    starts_with("sed_depth_cm_"),
+    names_to = "replicate",
+    values_to = "sediment_depth_cm",
+    values_drop_na = TRUE
+  ) %>%
+  mutate(
+    replicate = as.integer(str_extract(replicate, "\\d+$")),
+    sediment_depth_class = threshold_class(sediment_depth_cm)
+  ) %>%
+  left_join(transect_meter_gps, by = c("transect", "meter"))
+```
+
+## Raw Data Audit
+
+These summaries scope only the `SedimentDepth_RawData` sheets. The processed
+mean/difference sheets in the workbooks are not used.
+
+```{r raw-data-audit}
+raw_file_audit <- sediment_raw_sources %>%
+  summarize(
+    raw_rows = n(),
+    unique_surveys = n_distinct(survey),
+    surveys = paste(unique(survey[order(survey_n)]), collapse = ", "),
+    n_transects = n_distinct(transect),
+    n_transect_meter_positions = n_distinct(paste(transect, meter)),
+    min_date = min(date, na.rm = TRUE),
+    max_date = max(date, na.rm = TRUE),
+    replicate_count_values = paste(sort(unique(n_replicates_present)), collapse = ", "),
+    .by = c(monitoring_phase, monitoring_type, source_file_name)
+  ) %>%
+  arrange(monitoring_phase, monitoring_type, source_file_name)
+
+raw_overall_audit <- sediment_raw %>%
+  summarize(
+    unique_raw_rows = n(),
+    survey_events = n_distinct(survey),
+    survey_date_combinations = n_distinct(paste(survey, date)),
+    unique_dates = n_distinct(date),
+    transects = n_distinct(transect),
+    permanent_transects = n_distinct(transect[transect_type == "Permanent"]),
+    adjacent_transects = n_distinct(transect[transect_type == "Adjacent"]),
+    transect_meter_positions = n_distinct(paste(transect, meter)),
+    replicate_columns = paste(
+      names(select(sediment_raw, starts_with("sed_depth_cm_"))),
+      collapse = ", "
+    ),
+    replicate_count_values = paste(sort(unique(n_replicates_present)), collapse = ", "),
+    total_replicate_measurements = sum(n_replicates_present),
+    min_date = min(date, na.rm = TRUE),
+    max_date = max(date, na.rm = TRUE)
+  )
+
+raw_transect_audit <- sediment_raw %>%
+  summarize(
+    transect_type = first(transect_type),
+    min_meter = min(meter),
+    max_meter = max(meter),
+    n_meters = n_distinct(meter),
+    n_survey_events = n_distinct(survey),
+    surveys = paste(unique(survey[order(survey_n)]), collapse = ", "),
+    n_raw_meter_rows = n(),
+    n_rep_measurements = sum(n_replicates_present),
+    .by = transect
+  ) %>%
+  arrange(transect_type, parse_number(transect), transect)
+
+raw_survey_audit <- sediment_raw %>%
+  summarize(
+    dates = paste(sort(unique(date)), collapse = ", "),
+    n_dates = n_distinct(date),
+    n_transects = n_distinct(transect),
+    transects = paste(sort(unique(transect)), collapse = ", "),
+    n_meter_rows = n(),
+    n_permanent_transects = n_distinct(transect[transect_type == "Permanent"]),
+    n_adjacent_transects = n_distinct(transect[transect_type == "Adjacent"]),
+    total_rep_measurements = sum(n_replicates_present),
+    .by = c(survey_n, survey)
+  ) %>%
+  arrange(survey_n)
+
+raw_replicate_audit <- sediment_raw %>%
+  summarize(
+    n_meter_rows = n(),
+    n_rep_1_present = sum(!is.na(sed_depth_cm_1)),
+    n_rep_2_present = sum(!is.na(sed_depth_cm_2)),
+    n_rep_3_present = sum(!is.na(sed_depth_cm_3)),
+    min_reps_per_meter = min(n_replicates_present),
+    max_reps_per_meter = max(n_replicates_present),
+    rows_with_0_reps = sum(n_replicates_present == 0),
+    rows_with_1_rep = sum(n_replicates_present == 1),
+    rows_with_2_reps = sum(n_replicates_present == 2),
+    rows_with_3_reps = sum(n_replicates_present == 3),
+    .by = c(survey_n, survey)
+  ) %>%
+  arrange(survey_n)
+
+raw_workbook_duplication_audit <- sediment_raw_sources %>%
+  summarize(
+    source_file_count = n_distinct(source_file),
+    .by = c(
+      date,
+      survey,
+      survey_n,
+      transect_type,
+      transect,
+      meter,
+      sed_depth_cm_1,
+      sed_depth_cm_2,
+      sed_depth_cm_3
+    )
+  ) %>%
+  count(source_file_count, name = "unique_raw_rows") %>%
+  arrange(source_file_count)
+
+raw_value_conflict_audit <- sediment_raw_sources %>%
+  summarize(
+    n_value_versions = n_distinct(
+      paste(sed_depth_cm_1, sed_depth_cm_2, sed_depth_cm_3)
+    ),
+    values = paste(
+      unique(paste(sed_depth_cm_1, sed_depth_cm_2, sed_depth_cm_3, sep = "/")),
+      collapse = " | "
+    ),
+    source_files = paste(sort(unique(source_file_name)), collapse = " | "),
+    .by = c(date, survey, survey_n, transect_type, transect, meter)
+  ) %>%
+  filter(n_value_versions > 1) %>%
+  arrange(survey_n, transect, meter)
+
+raw_gps_audit <- sediment_raw %>%
+  distinct(transect_type, transect) %>%
+  left_join(
+    hardbottom_gps %>%
+      summarize(
+        gps_points = n(),
+        gps_meters = paste(sort(meter), collapse = ", "),
+        .by = transect
+      ),
+    by = "transect"
+  ) %>%
+  arrange(transect_type, parse_number(transect), transect)
+
+raw_file_audit
+raw_overall_audit
+raw_transect_audit
+raw_survey_audit
+raw_replicate_audit
+raw_workbook_duplication_audit
+raw_value_conflict_audit
+raw_gps_audit
+```
+
+```{r export-raw-audit}
+write_csv(raw_file_audit, file.path(audit_dir, "raw_file_audit.csv"))
+write_csv(raw_overall_audit, file.path(audit_dir, "raw_overall_audit.csv"))
+write_csv(raw_transect_audit, file.path(audit_dir, "raw_transect_audit.csv"))
+write_csv(raw_survey_audit, file.path(audit_dir, "raw_survey_audit.csv"))
+write_csv(raw_replicate_audit, file.path(audit_dir, "raw_replicate_audit.csv"))
+write_csv(
+  raw_workbook_duplication_audit,
+  file.path(audit_dir, "raw_workbook_duplication_audit.csv")
+)
+write_csv(
+  raw_value_conflict_audit,
+  file.path(audit_dir, "raw_value_conflict_audit.csv")
+)
+write_csv(raw_gps_audit, file.path(audit_dir, "raw_gps_audit.csv"))
+```
+
+## Baseline Differences
+
+Sedimentation impact is defined in the Biological Monitoring Plan as an increase
+in mean sediment depth of 1 cm or more above mean baseline sediment depth. This
+chunk creates both raw replicate-level deltas and meter-level mean deltas so
+individual high measurements remain visible before any transect averaging.
+
+```{r baseline-differences}
+baseline_by_meter <- sediment_raw %>%
+  filter(survey == "Baseline") %>%
+  transmute(
+    transect_type,
+    transect,
+    meter,
+    baseline_mean_cm = rowMeans(
+      pick(starts_with("sed_depth_cm_")),
+      na.rm = TRUE
+    ),
+    baseline_max_cm = do.call(
+      pmax,
+      c(pick(starts_with("sed_depth_cm_")), list(na.rm = TRUE))
+    )
+  )
+
+sediment_replicates_processed <- sediment_replicates %>%
+  left_join(
+    baseline_by_meter,
+    by = c("transect_type", "transect", "meter")
+  ) %>%
+  mutate(
+    sediment_delta_from_baseline_cm = sediment_depth_cm - baseline_mean_cm,
+    sediment_delta_class = threshold_class(sediment_delta_from_baseline_cm),
+    raw_gt_1cm_above_baseline = sediment_delta_from_baseline_cm >= 1
+  )
+
+sediment_meter_processed <- sediment_raw %>%
+  mutate(
+    mean_sediment_depth_cm = rowMeans(
+      pick(starts_with("sed_depth_cm_")),
+      na.rm = TRUE
+    ),
+    max_sediment_depth_cm = do.call(
+      pmax,
+      c(pick(starts_with("sed_depth_cm_")), list(na.rm = TRUE))
+    ),
+    n_replicates = rowSums(!is.na(pick(starts_with("sed_depth_cm_"))))
+  ) %>%
+  select(
+    date,
+    survey,
+    survey_n,
+    transect_type,
+    transect,
+    meter,
+    mean_sediment_depth_cm,
+    max_sediment_depth_cm,
+    n_replicates,
+    monitoring_phase,
+    monitoring_type,
+    source_file,
+    source_file_name
+  ) %>%
+  left_join(baseline_by_meter, by = c("transect_type", "transect", "meter")) %>%
+  left_join(transect_meter_gps, by = c("transect", "meter")) %>%
+  mutate(
+    mean_delta_from_baseline_cm = mean_sediment_depth_cm - baseline_mean_cm,
+    max_delta_from_baseline_cm = max_sediment_depth_cm - baseline_mean_cm,
+    mean_delta_class = threshold_class(mean_delta_from_baseline_cm),
+    max_delta_class = threshold_class(max_delta_from_baseline_cm),
+    sedimentation_impact = mean_delta_from_baseline_cm >= 1,
+    main_50m_segment = transect %in% c("ST1", "ST38") & between(meter, 0, 50)
+  )
+```
+
+## Transect Summaries
+
+```{r transect-summaries}
+sediment_transect_processed <- sediment_meter_processed %>%
+  summarize(
+    n_meters = n(),
+    transect_mean_depth_cm = mean(mean_sediment_depth_cm, na.rm = TRUE),
+    transect_mean_baseline_cm = mean(baseline_mean_cm, na.rm = TRUE),
+    transect_mean_delta_cm = transect_mean_depth_cm - transect_mean_baseline_cm,
+    max_meter_mean_delta_cm = max(mean_delta_from_baseline_cm, na.rm = TRUE),
+    max_raw_delta_cm = max(max_delta_from_baseline_cm, na.rm = TRUE),
+    n_meters_mean_gt_1cm = sum(mean_delta_from_baseline_cm >= 1, na.rm = TRUE),
+    pct_meters_mean_gt_1cm = n_meters_mean_gt_1cm / n_meters,
+    sedimentation_impact = transect_mean_delta_cm >= 1,
+    main_50m_sedimentation_impact = any(
+      main_50m_segment & mean_delta_from_baseline_cm >= 1,
+      na.rm = TRUE
+    ),
+    .by = c(date, survey, survey_n, transect_type, transect)
+  ) %>%
+  arrange(survey_n, transect)
+
+sediment_transect_processed %>%
+  filter(survey != "Baseline") %>%
+  arrange(desc(max_raw_delta_cm))
+```
+
+## Export Processed Tables
+
+```{r export}
+write_csv(
+  sediment_replicates_processed,
+  file.path(processed_dir, "sedimentation_replicates_processed.csv")
+)
+
+write_csv(
+  sediment_meter_processed,
+  file.path(processed_dir, "sedimentation_meter_processed.csv")
+)
+
+write_csv(
+  sediment_transect_processed,
+  file.path(processed_dir, "sedimentation_transect_processed.csv")
+)
+```
+
+## Quick Visual Checks
+
+The raw sediment sheets contain 19 transects total. Six adjacent transects are
+Baseline-only, so construction-only plots show the 13 permanent transects.
+
+```{r raw-coverage-plot, fig.width=11, fig.height=6}
+sediment_raw %>%
+  distinct(transect_type, transect, survey_n, survey) %>%
+  mutate(
+    transect = fct_reorder(transect, survey_n, .fun = max),
+    survey = fct_reorder(survey, survey_n)
+  ) %>%
+  ggplot(aes(x = survey, y = transect, fill = transect_type)) +
+  geom_tile(color = "white", linewidth = 0.2) +
+  scale_fill_manual(
+    values = c("Adjacent" = "#7f8c8d", "Permanent" = "#2a9d8f")
+  ) +
+  labs(
+    x = "Survey event",
+    y = "Transect",
+    fill = "Transect type"
+  ) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r raw-baseline-depth-plot, fig.width=11, fig.height=7}
+sediment_replicates %>%
+  filter(survey == "Baseline") %>%
+  ggplot(aes(x = meter, y = sediment_depth_cm)) +
+  geom_point(aes(color = sediment_depth_class), alpha = 0.55, size = 0.7) +
+  facet_wrap(~ transect, scales = "free_x") +
+  scale_color_manual(
+    values = c(
+      "below baseline" = "grey90",
+      "0 to 1.5 mm" = "#8ecae6",
+      ">1.5 to 5 mm" = "#ffb703",
+      ">5 mm to 1 cm" = "#fb8500",
+      ">1 cm" = "#d00000"
+    ),
+    drop = FALSE
+  ) +
+  labs(
+    x = "Transect meter",
+    y = "Raw sediment depth (cm)",
+    color = "Raw depth class"
+  ) +
+  theme_classic()
+```
+
+```{r construction-delta-plot, fig.width=11, fig.height=7}
+sediment_meter_processed %>%
+  filter(survey != "Baseline") %>%
+  ggplot(aes(x = meter, y = survey_n, fill = max_delta_class)) +
+  geom_tile() +
+  facet_wrap(~ transect, scales = "free_x") +
+  scale_fill_manual(
+    values = c(
+      "below baseline" = "grey90",
+      "0 to 1.5 mm" = "#8ecae6",
+      ">1.5 to 5 mm" = "#ffb703",
+      ">5 mm to 1 cm" = "#fb8500",
+      ">1 cm" = "#d00000"
+    ),
+    drop = FALSE
+  ) +
+  labs(
+    x = "Transect meter",
+    y = "Construction survey",
+    fill = "Max delta from baseline"
+  ) +
+  theme_classic()
+
+
+hist(sediment_meter_processed$max_delta_from_baseline_cm)
+```

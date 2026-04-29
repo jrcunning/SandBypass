@@ -1,0 +1,20 @@
+transect,transect_type,min_meter,max_meter,n_meters,n_survey_events,surveys,n_raw_meter_rows,n_rep_measurements
+BT23,Adjacent,0,70,71,1,Baseline,71,213
+BT23_S,Adjacent,0,100,101,1,Baseline,101,303
+BT24,Adjacent,0,70,71,1,Baseline,71,213
+BT24_N,Adjacent,0,100,101,1,Baseline,101,303
+ACER_NS,Adjacent,0,100,101,1,Baseline,101,303
+ACER_WE,Adjacent,0,50,51,1,Baseline,51,153
+ST1,Permanent,0,150,151,17,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",967,2901
+ST2,Permanent,0,50,51,17,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",867,2601
+ST4,Permanent,0,50,51,17,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",867,2601
+ST5,Permanent,0,50,51,16,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con10, Con11, Con12, Con20, Con22, Con24, Con25",816,2448
+ST22,Permanent,0,50,51,17,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",867,2601
+ST28,Permanent,0,50,51,17,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",867,2601
+ST31,Permanent,0,50,51,16,"Baseline, Con1, Con2, Con3, Con4, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",816,2448
+ST34,Permanent,0,50,51,16,"Baseline, Con1, Con2, Con3, Con4, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",816,2448
+ST35,Permanent,0,50,51,17,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",867,2601
+ST36,Permanent,0,50,51,16,"Baseline, Con1, Con2, Con3, Con4, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",816,2448
+ST38,Permanent,0,150,151,17,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",967,2901
+ST40,Permanent,0,50,51,16,"Baseline, Con1, Con2, Con3, Con4, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",816,2448
+ST45,Permanent,0,50,51,15,"Baseline, Con1, Con2, Con3, Con4, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con25",765,2295
