@@ -1213,43 +1213,40 @@ write_csv(
 transect_net_exceedance_tests
 ```
 
-### Week-specific Delta Percentile Tests
+### Week-specific Tail-balance Tests
 
-This approach keeps construction survey as a time series rather than fitting a
-single linear trend. For each survey and predicted sedimentation class, it
-estimates selected meter-level delta percentiles and bootstraps confidence
-intervals by resampling transects. The one-sided evidence flag asks whether a
-given percentile is above zero for that specific survey. For example, if the
-90th percentile is above zero, then the upper 10% of measured reef meters have
-positive deltas at that time point. Confidence intervals are not estimated when
+This approach keeps construction survey as a time series while explicitly
+accounting for opposite negative deltas. For each survey and predicted
+sedimentation class, it compares matched positive and negative tails:
+`p75 - abs(p25)`, `p90 - abs(p10)`, and `p95 - abs(p05)`. Positive values mean
+the sediment-gain tail is larger than the sediment-loss tail for that week. The
+bootstrap resamples transects, and confidence intervals are not estimated when
 fewer than three transects are available in a survey/class group.
 
-```{r week-specific-delta-percentile-tests, fig.width=11, fig.height=7}
-week_delta_percentile_bootstrap_n <- 1000
+```{r week-specific-tail-balance-tests, fig.width=11, fig.height=7}
+week_tail_balance_bootstrap_n <- 1000
 
-week_delta_percentile_probs <- tibble(
-  percentile_prob = c(0.50, 0.75, 0.90, 0.95),
-  percentile_label = factor(
-    c("Median", "75th percentile", "90th percentile", "95th percentile"),
-    levels = c("Median", "75th percentile", "90th percentile", "95th percentile")
+summarize_tail_balance <- function(delta) {
+  delta_quantiles <- quantile(
+    delta,
+    probs = c(0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
+    names = TRUE
   )
-)
 
-summarize_delta_percentiles <- function(delta) {
   tibble(
-    percentile_prob = week_delta_percentile_probs$percentile_prob,
-    percentile_label = week_delta_percentile_probs$percentile_label,
-    delta_cm = as.numeric(
-      quantile(
-        delta,
-        probs = week_delta_percentile_probs$percentile_prob,
-        names = FALSE
-      )
-    )
+    tail_contrast = factor(
+      c("75th minus |25th|", "90th minus |10th|", "95th minus |5th|"),
+      levels = c("75th minus |25th|", "90th minus |10th|", "95th minus |5th|")
+    ),
+    lower_percentile = c(0.25, 0.10, 0.05),
+    upper_percentile = c(0.75, 0.90, 0.95),
+    lower_delta_cm = as.numeric(delta_quantiles[c("25%", "10%", "5%")]),
+    upper_delta_cm = as.numeric(delta_quantiles[c("75%", "90%", "95%")]),
+    upper_tail_excess_cm = upper_delta_cm - abs(lower_delta_cm)
   )
 }
 
-bootstrap_delta_percentiles <- function(data, n_boot) {
+bootstrap_tail_balance <- function(data, n_boot) {
   transects <- sort(unique(data$transect))
 
   map_dfr(seq_len(n_boot), function(boot_i) {
@@ -1257,45 +1254,39 @@ bootstrap_delta_percentiles <- function(data, n_boot) {
       map(~ data$mean_delta_from_baseline_cm[data$transect == .x]) %>%
       list_c()
 
-    summarize_delta_percentiles(boot_delta) %>%
+    summarize_tail_balance(boot_delta) %>%
       mutate(boot_i = boot_i, .before = 1)
   })
 }
 
-week_delta_percentile_observed <- construction_measured_deltas %>%
+week_tail_balance_observed <- construction_measured_deltas %>%
   summarize(
     survey_start_date = min(date, na.rm = TRUE),
     survey_end_date = max(date, na.rm = TRUE),
     survey_dates = paste(sort(unique(date)), collapse = ", "),
     measured_meter_positions = n(),
     n_transects = n_distinct(transect),
-    delta_percentiles = list(summarize_delta_percentiles(mean_delta_from_baseline_cm)),
+    tail_balance = list(summarize_tail_balance(mean_delta_from_baseline_cm)),
     .by = c(survey, survey_n, model_sedimentation_class)
   ) %>%
-  unnest(delta_percentiles)
+  unnest(tail_balance)
 
-week_delta_percentile_bootstrap <- construction_measured_deltas %>%
+week_tail_balance_bootstrap <- construction_measured_deltas %>%
   group_by(survey, survey_n, model_sedimentation_class) %>%
-  group_modify(~ bootstrap_delta_percentiles(.x, week_delta_percentile_bootstrap_n)) %>%
+  group_modify(~ bootstrap_tail_balance(.x, week_tail_balance_bootstrap_n)) %>%
   ungroup()
 
-week_delta_percentile_ci <- week_delta_percentile_bootstrap %>%
+week_tail_balance_ci <- week_tail_balance_bootstrap %>%
   summarize(
-    delta_cm_lcl = quantile(delta_cm, 0.025),
-    delta_cm_ucl = quantile(delta_cm, 0.975),
-    .by = c(survey, survey_n, model_sedimentation_class, percentile_prob, percentile_label)
+    upper_tail_excess_lcl = quantile(upper_tail_excess_cm, 0.025),
+    upper_tail_excess_ucl = quantile(upper_tail_excess_cm, 0.975),
+    .by = c(survey, survey_n, model_sedimentation_class, tail_contrast)
   )
 
-week_delta_percentile_tests <- week_delta_percentile_observed %>%
+week_tail_balance_tests <- week_tail_balance_observed %>%
   left_join(
-    week_delta_percentile_ci,
-    by = c(
-      "survey",
-      "survey_n",
-      "model_sedimentation_class",
-      "percentile_prob",
-      "percentile_label"
-    )
+    week_tail_balance_ci,
+    by = c("survey", "survey_n", "model_sedimentation_class", "tail_contrast")
   ) %>%
   mutate(
     ci_note = if_else(
@@ -1304,45 +1295,45 @@ week_delta_percentile_tests <- week_delta_percentile_observed %>%
       "Transect bootstrap CI"
     ),
     across(
-      c(delta_cm_lcl, delta_cm_ucl),
+      c(upper_tail_excess_lcl, upper_tail_excess_ucl),
       ~ if_else(n_transects < 3, NA_real_, .x)
     ),
-    evidence_delta_above_zero = delta_cm_lcl > 0
+    evidence_positive_tail_asymmetry = upper_tail_excess_lcl > 0
   ) %>%
-  arrange(survey_n, model_sedimentation_class, percentile_prob)
+  arrange(survey_n, model_sedimentation_class, tail_contrast)
 
-week_delta_percentile_plot_data <- week_delta_percentile_tests %>%
-  arrange(model_sedimentation_class, percentile_label, survey_start_date) %>%
+week_tail_balance_plot_data <- week_tail_balance_tests %>%
+  arrange(model_sedimentation_class, tail_contrast, survey_start_date) %>%
   mutate(
     monitoring_gap_days = as.numeric(survey_start_date - lag(survey_start_date)),
     plot_segment = cumsum(coalesce(monitoring_gap_days > 14, FALSE)),
-    .by = c(model_sedimentation_class, percentile_label)
+    .by = c(model_sedimentation_class, tail_contrast)
   )
 
-week_delta_percentile_annotations <- week_delta_percentile_plot_data %>%
-  filter(evidence_delta_above_zero) %>%
-  mutate(annotation_y = delta_cm_ucl)
+week_tail_balance_annotations <- week_tail_balance_plot_data %>%
+  filter(evidence_positive_tail_asymmetry) %>%
+  mutate(annotation_y = upper_tail_excess_ucl)
 
-week_delta_percentile_plot <- week_delta_percentile_plot_data %>%
-  ggplot(aes(x = survey_n, y = delta_cm, color = percentile_label)) +
+week_tail_balance_plot <- week_tail_balance_plot_data %>%
+  ggplot(aes(x = survey_n, y = upper_tail_excess_cm, color = tail_contrast)) +
   geom_hline(yintercept = 0, color = "grey70", linewidth = 0.3) +
   geom_ribbon(
-    data = ~ filter(.x, !is.na(delta_cm_lcl), !is.na(delta_cm_ucl)),
+    data = ~ filter(.x, !is.na(upper_tail_excess_lcl), !is.na(upper_tail_excess_ucl)),
     aes(
-      ymin = delta_cm_lcl,
-      ymax = delta_cm_ucl,
-      fill = percentile_label,
-      group = interaction(percentile_label, plot_segment)
+      ymin = upper_tail_excess_lcl,
+      ymax = upper_tail_excess_ucl,
+      fill = tail_contrast,
+      group = interaction(tail_contrast, plot_segment)
     ),
     alpha = 0.12,
     color = NA
   ) +
   geom_line(
-    aes(group = interaction(percentile_label, plot_segment)),
+    aes(group = interaction(tail_contrast, plot_segment)),
     linewidth = 0.75
   ) +
   geom_text(
-    data = week_delta_percentile_annotations,
+    data = week_tail_balance_annotations,
     aes(x = survey_n, y = annotation_y, label = "*"),
     color = "black",
     vjust = -0.35,
@@ -1350,47 +1341,31 @@ week_delta_percentile_plot <- week_delta_percentile_plot_data %>%
     show.legend = FALSE
   ) +
   facet_wrap(~ model_sedimentation_class) +
-  scale_color_manual(
-    values = c(
-      "Median" = "#2a9d8f",
-      "75th percentile" = "#fb8500",
-      "90th percentile" = "#d00000",
-      "95th percentile" = "#370617"
-    )
-  ) +
-  scale_fill_manual(
-    values = c(
-      "Median" = "#2a9d8f",
-      "75th percentile" = "#fb8500",
-      "90th percentile" = "#d00000",
-      "95th percentile" = "#370617"
-    )
-  ) +
   labs(
     x = "Construction survey",
-    y = "Sediment delta from baseline (cm)",
-    color = "Measured reef percentile",
-    fill = "Measured reef percentile",
-    title = "Week-specific sediment delta percentiles",
-    caption = "* Transect bootstrap CI for percentile is entirely above zero"
+    y = "Upper-tail excess over matched lower tail (cm)",
+    color = "Tail contrast",
+    fill = "Tail contrast",
+    title = "Week-specific sediment-gain tail balance",
+    caption = "* Transect bootstrap CI for upper-tail excess is entirely above zero"
   ) +
   theme_classic()
 
 write_csv(
-  week_delta_percentile_tests,
-  file.path(reef_summary_dir, "week_delta_percentile_tests.csv")
+  week_tail_balance_tests,
+  file.path(reef_summary_dir, "week_tail_balance_tests.csv")
 )
 
 ggsave(
-  file.path(reef_summary_dir, "week_delta_percentile_tests.png"),
-  week_delta_percentile_plot,
+  file.path(reef_summary_dir, "week_tail_balance_tests.png"),
+  week_tail_balance_plot,
   width = 11,
   height = 7,
   dpi = 300
 )
 
-week_delta_percentile_plot
-week_delta_percentile_tests %>% filter(evidence_delta_above_zero)
+week_tail_balance_plot
+week_tail_balance_tests %>% filter(evidence_positive_tail_asymmetry)
 ```
 
 ### Tail Asymmetry Diagnostics
