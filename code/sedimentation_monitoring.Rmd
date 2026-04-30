@@ -654,7 +654,7 @@ common than equivalent sediment loss.
 ```{r net-positive-exceedance-tests, fig.width=11, fig.height=7}
 set.seed(20260429)
 
-net_exceedance_bootstrap_n <- 1000
+net_exceedance_bootstrap_n <- 100
 
 net_exceedance_thresholds <- tibble(
   threshold_cm = c(0.15, 0.5, 1),
@@ -999,4 +999,204 @@ week_tail_balance_plot <- week_tail_balance_plot_data %>%
   theme_classic()
 
 week_tail_balance_plot
+```
+
+
+
+
+
+```{r weekly-depth-boxplots-by-transect, fig.width=12, fig.height=8}
+sediment_replicates_processed %>%
+  filter(transect_type == "Permanent") %>%
+  mutate(
+    survey_week = factor(
+      survey_n,
+      levels = sort(unique(survey_n)),
+      labels = if_else(
+        sort(unique(survey_n)) == 0,
+        "Baseline",
+        paste0("Week ", sort(unique(survey_n)))
+      )
+    ),
+    transect = fct_reorder(
+      transect,
+      as.integer(model_sedimentation_class) * 1000 + readr::parse_number(transect),
+      .fun = min
+    )
+  ) %>%
+  ggplot(aes(x = survey_week, y = sediment_depth_cm)) +
+  # geom_boxplot(
+  #   outlier.shape = NA,
+  #   fill = "grey85",
+  #   color = "grey25",
+  #   linewidth = 0.35
+  # ) +
+  geom_violin() +
+  geom_jitter(
+    aes(color = survey == "Baseline"),
+    width = 0.18,
+    height = 0,
+    alpha = 0.35,
+    size = 0.6
+  ) +
+  facet_wrap(~ model_sedimentation_class + transect, scales = "free_y") +
+  scale_color_manual(
+    values = c("FALSE" = "grey45", "TRUE" = "#d00000"),
+    labels = c("Construction", "Baseline"),
+    name = "Survey"
+  ) +
+  labs(
+    x = "Survey week",
+    y = "Raw sediment depth (cm)",
+    title = "Raw sediment depth distributions by week and transect"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_y_continuous(transform = "log10")
+
+```
+
+
+```{r weekly-depth-boxplots-by-transect-with-tests, fig.width=12, fig.height=8}
+plot_data <- sediment_replicates_processed %>%
+  filter(transect_type == "Permanent") %>%
+  mutate(
+    survey_week = factor(
+      survey_n,
+      levels = sort(unique(survey_n)),
+      labels = if_else(
+        sort(unique(survey_n)) == 0,
+        "Baseline",
+        paste0("Week ", sort(unique(survey_n)))
+      )
+    ),
+    transect = fct_reorder(
+      transect,
+      as.integer(model_sedimentation_class) * 1000 + readr::parse_number(transect),
+      .fun = min
+    )
+  )
+
+meter_week_depths <- plot_data %>%
+  summarize(
+    meter_week_mean_cm = mean(sediment_depth_cm, na.rm = TRUE),
+    .by = c(
+      transect_type,
+      transect,
+      model_sedimentation_class,
+      survey_n,
+      survey_week,
+      meter
+    )
+  ) %>%
+  mutate(
+    transect_overall_median_cm = median(meter_week_mean_cm, na.rm = TRUE),
+    .by = transect
+  )
+
+week_tests <- meter_week_depths %>%
+  summarize(
+    n_meters = sum(!is.na(meter_week_mean_cm)),
+    p_value = {
+      x <- meter_week_mean_cm[!is.na(meter_week_mean_cm)]
+      mu <- first(transect_overall_median_cm)
+      differences <- x - mu
+
+      if (
+        length(x) >= 3 &&
+          is.finite(mu) &&
+          n_distinct(differences[differences != 0], na.rm = TRUE) > 1
+      ) {
+        wilcox.test(
+          x,
+          mu = mu,
+          alternative = "greater",
+          exact = FALSE
+        )$p.value
+      } else {
+        NA_real_
+      }
+    },
+    .by = c(transect, model_sedimentation_class, survey_n, survey_week)
+  ) %>%
+  mutate(
+    p_adj = p.adjust(p_value, method = "BH"),
+    sig_label = case_when(
+      p_adj <= 0.001 ~ "***",
+      p_adj <= 0.01 ~ "**",
+      p_adj <= 0.05 ~ "*",
+      TRUE ~ NA_character_
+    ),
+    .by = transect
+  )
+
+annotation_data <- plot_data %>%
+  summarize(
+    week_max_cm = max(sediment_depth_cm, na.rm = TRUE),
+    .by = c(transect, model_sedimentation_class, survey_week)
+  ) %>%
+  left_join(
+    plot_data %>%
+      summarize(
+        panel_min_cm = min(sediment_depth_cm, na.rm = TRUE),
+        panel_max_cm = max(sediment_depth_cm, na.rm = TRUE),
+        .by = c(transect, model_sedimentation_class)
+      ),
+    by = c("transect", "model_sedimentation_class")
+  ) %>%
+  inner_join(
+    filter(week_tests, !is.na(sig_label)),
+    by = c("transect", "model_sedimentation_class", "survey_week")
+  ) %>%
+  mutate(
+    y = week_max_cm + pmax(
+      (panel_max_cm - panel_min_cm) * 0.08,
+      panel_max_cm * 0.05,
+      0.05
+    )
+  )
+
+ggplot(plot_data, aes(x = survey_week, y = sediment_depth_cm)) +
+  geom_boxplot(
+    outlier.shape = NA,
+    fill = "grey85",
+    color = "grey25",
+    linewidth = 0.35
+  ) +
+  geom_jitter(
+    aes(color = survey == "Baseline"),
+    width = 0.18,
+    height = 0,
+    alpha = 0.35,
+    size = 0.6
+  ) +
+  geom_text(
+    data = annotation_data,
+    aes(x = survey_week, y = y, label = sig_label),
+    inherit.aes = FALSE,
+    size = 5,
+    vjust = 0
+  ) +
+  facet_wrap(~ model_sedimentation_class + transect, scales = "free_y") +
+  scale_color_manual(
+    values = c("FALSE" = "grey45", "TRUE" = "#d00000"),
+    labels = c("Construction", "Baseline"),
+    name = "Survey"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.04, 0.18))) +
+  labs(
+    x = "Survey week",
+    y = "Raw sediment depth (cm)",
+    title = "Raw sediment depth distributions by week and transect",
+    subtitle = "Asterisks mark weeks significantly higher than the transect-level overall median; BH-adjusted within transect"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
 ```
