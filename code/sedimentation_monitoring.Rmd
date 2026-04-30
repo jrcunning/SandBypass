@@ -19,9 +19,6 @@ knitr::opts_knit$set(root.dir = project_dir)
 
 ```{r paths}
 sediment_dir <- "data/sedimentation_monitoring"
-processed_dir <- "data/processed"
-
-dir.create(processed_dir, showWarnings = FALSE, recursive = TRUE)
 
 gps_file <- file.path(sediment_dir, "PE_SB_Station_Transect_GPS.xlsx")
 
@@ -337,10 +334,6 @@ sediment_transect_processed <- sediment_meter_processed %>%
     )
   ) %>%
   arrange(survey_n, model_sedimentation_class, transect)
-
-sediment_transect_processed %>%
-  filter(survey != "Baseline") %>%
-  arrange(desc(max_raw_delta_cm))
 ```
 
 ## Quick Visual Checks
@@ -445,26 +438,20 @@ sediment_meter_processed %>%
       .fun = min
     )
   ) %>%
-  ggplot(aes(x = meter, y = survey_n, fill = mean_delta_class)) +
+  ggplot(aes(x = meter, y = survey_n, fill = mean_delta_from_baseline_cm)) +
   geom_tile() +
   facet_wrap(~ model_sedimentation_class + transect, scales = "free_x") +
-  scale_fill_manual(
-    values = c(
-      "below baseline" = "grey90",
-      "0 to 1.5 mm" = "#8ecae6",
-      ">1.5 to 5 mm" = "#ffb703",
-      ">5 mm to 1 cm" = "#fb8500",
-      "1-5 cm" = "#d00000",
-      "5-10 cm" = "#9d0208",
-      ">10 cm" = "#370617"
-    ),
+  scale_fill_gradient2(
+    low = "#2166ac",
+    mid = "grey97",
+    high = "#b2182b",
+    midpoint = 0,
     na.value = "grey95",
-    drop = FALSE
+    name = "Mean delta from baseline (cm)"
   ) +
   labs(
     x = "Transect meter",
-    y = "Construction survey",
-    fill = "Mean delta from baseline",
+    y = "Construction survey week number",
     title = "Construction sediment delta from baseline by transect"
   ) +
   theme_classic()
@@ -478,21 +465,7 @@ unsampled expected meter positions are retained in the tables for coverage
 tracking but omitted from the threshold-composition figure.
 
 ```{r reef-delta-summary, fig.width=10, fig.height=6}
-reef_summary_dir <- file.path("analysis", "sedimentation_reef_delta_summary")
-dir.create(reef_summary_dir, showWarnings = FALSE, recursive = TRUE)
-
 threshold_levels <- levels(threshold_class(0))
-threshold_colors <- c(
-  "below baseline" = "grey90",
-  "0 to 1.5 mm" = "#8ecae6",
-  ">1.5 to 5 mm" = "#ffb703",
-  ">5 mm to 1 cm" = "#fb8500",
-  "1-5 cm" = "#d00000",
-  "5-10 cm" = "#9d0208",
-  ">10 cm" = "#370617",
-  "unmeasured" = "grey95"
-)
-
 construction_reef_delta_grid <- sediment_meter_processed %>%
   filter(survey != "Baseline", transect_type == "Permanent") %>%
   mutate(
@@ -576,13 +549,6 @@ reef_delta_summary_by_week_class <- construction_reef_delta_grid %>%
     by = c("survey", "survey_n", "model_sedimentation_class")
   ) %>%
   arrange(survey_n, model_sedimentation_class)
-
-write_csv(
-  reef_delta_summary_by_week_class,
-  file.path(reef_summary_dir, "reef_delta_summary_by_week_class.csv")
-)
-
-reef_delta_summary_by_week_class
 ```
 
 ```{r reef-delta-summary-figures, fig.width=11, fig.height=7}
@@ -788,12 +754,6 @@ net_exceedance_by_week_class <- net_exceedance_observed %>%
   ) %>%
   arrange(survey_n, model_sedimentation_class, threshold_cm)
 
-write_csv(
-  net_exceedance_by_week_class,
-  file.path(reef_summary_dir, "net_positive_exceedance_by_week_class.csv")
-)
-
-net_exceedance_by_week_class
 ```
 
 ```{r net-positive-exceedance-figures, fig.width=11, fig.height=7}
@@ -869,8 +829,6 @@ net_exceedance_threshold_plot <- net_exceedance_threshold_plot_data %>%
   theme_classic()
 
 net_exceedance_threshold_plot
-
-net_exceedance_by_week_class %>% filter(evidence_positive_asymmetry)
 ```
 
 ## Focused Attribution Analyses
@@ -1039,85 +997,5 @@ week_tail_balance_plot <- week_tail_balance_plot_data %>%
   ) +
   theme_classic()
 
-
 week_tail_balance_plot
-week_tail_balance_tests %>% filter(evidence_positive_tail_asymmetry)
-```
-
-### Transect-level Net Exceedance Tests
-
-This repeats the threshold asymmetry analysis using transects as the analysis
-unit. For each survey, predicted sedimentation class, threshold, and transect,
-it calculates the transect-level net positive area. It then tests whether the
-transect-level values are centered above zero. This is statistically cleaner
-than treating meters as independent, but power is limited when a class has only
-one or two transects.
-
-```{r transect-level-net-exceedance-tests}
-transect_net_exceedance <- construction_measured_deltas %>%
-  cross_join(net_exceedance_thresholds) %>%
-  summarize(
-    n_meters = n(),
-    positive_meter_positions = sum(mean_delta_from_baseline_cm >= threshold_cm),
-    negative_meter_positions = sum(mean_delta_from_baseline_cm <= -threshold_cm),
-    positive_area = positive_meter_positions / n_meters,
-    negative_area = negative_meter_positions / n_meters,
-    net_positive_area = positive_area - negative_area,
-    .by = c(
-      survey,
-      survey_n,
-      model_sedimentation_class,
-      threshold_cm,
-      threshold_label,
-      transect
-    )
-  )
-
-transect_net_test <- function(data) {
-  nonzero_net <- data$net_positive_area[data$net_positive_area != 0]
-  n_positive <- sum(data$net_positive_area > 0)
-  n_negative <- sum(data$net_positive_area < 0)
-
-  tibble(
-    n_transects = n_distinct(data$transect),
-    mean_transect_net_positive_area = mean(data$net_positive_area),
-    median_transect_net_positive_area = median(data$net_positive_area),
-    n_transects_positive = n_positive,
-    n_transects_negative = n_negative,
-    sign_test_p_value = if (length(nonzero_net) >= 3) {
-      binom.test(
-        n_positive,
-        n_positive + n_negative,
-        p = 0.5,
-        alternative = "greater"
-      )$p.value
-    } else {
-      NA_real_
-    },
-    wilcox_p_value = if (length(nonzero_net) >= 3) {
-      wilcox.test(
-        data$net_positive_area,
-        mu = 0,
-        alternative = "greater",
-        exact = FALSE
-      )$p.value
-    } else {
-      NA_real_
-    },
-    test_note = if_else(
-      n_transects < 3,
-      "Not enough transects for a useful transect-level test",
-      "Exploratory one-sided tests of transect-level net positive area > 0"
-    )
-  )
-}
-
-transect_net_exceedance_tests <- transect_net_exceedance %>%
-  group_by(survey, survey_n, model_sedimentation_class, threshold_cm, threshold_label) %>%
-  group_modify(~ transect_net_test(.x)) %>%
-  ungroup() %>%
-  arrange(survey_n, model_sedimentation_class, threshold_cm)
-
-
-transect_net_exceedance_tests
 ```
