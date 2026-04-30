@@ -1,9 +1,0 @@
-monitoring_phase,monitoring_type,source_file_name,raw_rows,unique_surveys,surveys,n_transects,n_transect_meter_positions,min_date,max_date,replicate_count_values
-during_construction,exceedance_triggered,2025-2026_PESandBypass_TransectData_Con10.xlsx,7683,11,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10",19,1359,2025-09-15,2026-02-05,3
-during_construction,exceedance_triggered,2025-2026_PESandBypass_TransectData_Con8.xlsx,6408,9,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8",19,1359,2025-09-15,2026-01-17,3
-during_construction,weekly,2025-2026_PESandBypass_TransectData_Con01_Con10.xlsx,7683,11,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10",19,1359,2025-09-15,2026-02-05,3
-during_construction,weekly,2025-2026_PESandBypass_TransectData_Con11_Con20.xlsx,9672,14,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20",19,1359,2025-09-15,2026-03-10,3
-during_construction,weekly,2025-2026_PESandBypass_TransectData_Con22.xlsx,10335,15,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22",19,1359,2025-09-15,2026-03-24,3
-during_construction,weekly,2025-2026_PESandBypass_TransectData_Con24.xlsx,10947,16,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24",19,1359,2025-09-15,2026-04-07,3
-during_construction,weekly,2025-2026_PESandBypass_TransectData_Con25.xlsx,11610,17,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10, Con11, Con12, Con20, Con22, Con24, Con25",19,1359,2025-09-15,2026-04-17,3
-pre_construction,compiled,2025-2026_PESandBypass_TransectData_091625_020526.xlsx,7683,11,"Baseline, Con1, Con2, Con3, Con4, Con5, Con6, Con7, Con8, Con9, Con10",19,1359,2025-09-15,2026-02-05,3
