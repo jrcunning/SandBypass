@@ -368,7 +368,7 @@ sediment_replicates %>%
   filter(survey == "Baseline") %>%
   ggplot(aes(x = meter, y = sediment_depth_cm)) +
   geom_point(aes(color = sediment_depth_class), alpha = 0.55, size = 0.7) +
-  facet_wrap(~ transect, scales = "free_x") +
+  facet_wrap(~ model_sedimentation_class + transect, scales = "free_x") +
   scale_color_manual(
     values = c(
       "below baseline" = "grey90",
@@ -442,10 +442,11 @@ sediment_meter_processed %>%
   geom_tile() +
   facet_wrap(~ model_sedimentation_class + transect, scales = "free_x") +
   scale_fill_gradient2(
-    low = "#2166ac",
-    mid = "grey97",
-    high = "#b2182b",
+    low = "#08306b",
+    mid = "gray90",
+    high = "#7f0000",
     midpoint = 0,
+    trans = scales::pseudo_log_trans(sigma = 0.15),
     na.value = "grey95",
     name = "Mean delta from baseline (cm)"
   ) +
@@ -863,7 +864,7 @@ positive sediment deltas are more extreme than the largest negative deltas, even
 when the affected area is limited.
 
 ```{r week-specific-tail-balance-tests, fig.width=11, fig.height=7}
-week_tail_balance_bootstrap_n <- 1000
+week_tail_balance_bootstrap_n <- 100
 
 summarize_tail_balance <- function(delta) {
   delta_quantiles <- quantile(
