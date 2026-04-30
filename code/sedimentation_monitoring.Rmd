@@ -365,7 +365,7 @@ sediment_raw %>%
 
 ```{r raw-baseline-depth-plot, fig.width=11, fig.height=7}
 sediment_replicates %>%
-  filter(survey == "Baseline") %>%
+  filter(survey == "Baseline", transect_type == "Permanent") %>%
   ggplot(aes(x = meter, y = sediment_depth_cm)) +
   geom_point(aes(color = sediment_depth_class), alpha = 0.55, size = 0.7) +
   facet_wrap(~ model_sedimentation_class + transect, scales = "free_x") +
@@ -574,24 +574,24 @@ reef_delta_summary_plot <- reef_delta_summary_by_week_class %>%
   mutate(
     delta_percentile = recode(
       delta_percentile,
-      p01_delta_cm = "1st percentile",
-      p10_delta_cm = "10th percentile",
-      p25_delta_cm = "25th percentile (25% at or below)",
-      median_delta_cm = "Median",
-      p75_delta_cm = "75th percentile (25% at or above)",
-      p90_delta_cm = "90th percentile",
-      p99_delta_cm = "99th percentile"
+      p01_delta_cm = "1% at or below (p1)",
+      p10_delta_cm = "10% at or below (p10)",
+      p25_delta_cm = "25% at or below (p25)",
+      median_delta_cm = "Median (p50)",
+      p75_delta_cm = "25% at or above (p75)",
+      p90_delta_cm = "10% at or above (p90)",
+      p99_delta_cm = "1% at or above (p99)"
     ),
     delta_percentile = factor(
       delta_percentile,
       levels = c(
-        "1st percentile",
-        "10th percentile",
-        "25th percentile (25% at or below)",
-        "Median",
-        "75th percentile (25% at or above)",
-        "90th percentile",
-        "99th percentile"
+        "1% at or below (p1)",
+        "10% at or below (p10)",
+        "25% at or below (p25)",
+        "Median (p50)",
+        "25% at or above (p75)",
+        "10% at or above (p90)",
+        "1% at or above (p99)"
       )
     )
   ) %>%
@@ -614,19 +614,20 @@ reef_delta_summary_plot <- reef_delta_summary_by_week_class %>%
   facet_wrap(~ model_sedimentation_class) +
   scale_color_manual(
     values = c(
-      "1st percentile" = "#2166ac",
-      "10th percentile" = "#67a9cf",
-      "25th percentile (25% at or below)" = "#d1e5f0",
-      "Median" = "#2a9d8f",
-      "75th percentile (25% at or above)" = "#fb8500",
-      "90th percentile" = "#d00000",
-      "99th percentile" = "#370617"
-    )
+      "1% at or below (p1)" = "#2166ac",
+      "10% at or below (p10)" = "#67a9cf",
+      "25% at or below (p25)" = "#d1e5f0",
+      "Median (p50)" = "#2a9d8f",
+      "25% at or above (p75)" = "#fb8500",
+      "10% at or above (p90)" = "#d00000",
+      "1% at or above (p99)" = "#370617"
+    ),
+    guide = guide_legend(reverse = TRUE)
   ) +
   labs(
     x = "Construction survey",
     y = "Sediment delta from baseline (cm)",
-    color = "Measured reef percentile",
+    color = "Percent of reef area",
     title = "Construction sediment delta percentiles by model sedimentation class"
   ) +
   theme_classic()
@@ -845,8 +846,7 @@ area is above a positive threshold after subtracting area below the equivalent
 negative threshold? The week-specific tail-balance plot below asks a different
 magnitude question: when sediment gains occur in the upper tail of the weekly
 distribution, are those gains larger than the corresponding sediment-loss tail?
-The simpler tail-asymmetry diagnostic was removed because it repeated this tail
-comparison without the bootstrap confidence intervals.
+
 
 ### Week-specific Tail-balance Tests
 
