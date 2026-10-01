@@ -1,0 +1,1260 @@
+---
+title: "Sedimentation Baseline Robustness Analysis"
+author: "Ross Cunning"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(patchwork)
+
+project_dir <- if (basename(getwd()) == "code") dirname(getwd()) else getwd()
+knitr::opts_knit$set(root.dir = project_dir)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center"
+)
+
+theme_set(
+  theme_minimal(base_size = 10) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title.position = "plot"
+    )
+)
+```
+
+# Purpose and interpretation
+
+The official pre-construction survey appears higher than much of the subsequent
+monitoring record at many transects. This report tests whether that pattern is
+large, spatially consistent, and unusual relative to ordinary survey-to-survey
+variation. It then compares alternative meter-specific reference formulations.
+
+These analyses diagnose **representativeness**, not intent or data quality. A
+high official baseline could reflect a real but transient sediment state,
+seasonality, measurement differences, or natural redistribution. None of the
+tests alone establishes the cause. Likewise, construction-period observations
+are not automatically impact-free; alternatives using Con1 or Con2 must be
+interpreted as sensitivity references rather than replacements for the
+regulatory baseline unless their use is independently justified.
+
+# Data preparation
+
+```{r data-preparation}
+sediment_dir <- "data/sedimentation_monitoring"
+
+construction_files <- list.files(
+  file.path(sediment_dir, "2_During-Construction", "Data"),
+  pattern = "\\.xlsx$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+construction_file_index <- tibble(source_file = construction_files) %>%
+  mutate(
+    source_file_name = basename(source_file),
+    construction_survey_n = map_int(
+      str_extract_all(source_file_name, "(?i)(?<=con)\\d+"),
+      ~ if (length(.x) == 0) NA_integer_ else max(as.integer(.x))
+    )
+  ) %>%
+  filter(!is.na(construction_survey_n)) %>%
+  arrange(desc(construction_survey_n), desc(file.info(source_file)$mtime))
+
+latest_construction_file <- construction_file_index %>%
+  slice(1) %>%
+  pull(source_file)
+
+sediment_raw <- read_excel(
+  latest_construction_file,
+  sheet = "SedimentDepth_RawData"
+) %>%
+  clean_names() %>%
+  mutate(
+    date = as.Date(date),
+    survey = str_squish(survey),
+    survey_n = if_else(
+      survey == "Baseline",
+      0L,
+      as.integer(str_extract(survey, "\\d+"))
+    ),
+    transect = str_replace_all(str_squish(transect), "\\s+", "_"),
+    meter = as.integer(meter),
+    meter_mean_sediment_cm = rowMeans(
+      pick(starts_with("sed_depth_cm_")),
+      na.rm = TRUE
+    )
+  )
+
+transect_survey_coverage <- sediment_raw %>%
+  summarize(
+    n_meter_positions = n_distinct(meter),
+    n_surveys = n_distinct(survey),
+    latest_survey_n = max(survey_n),
+    has_baseline = any(survey_n == 0),
+    has_con1 = any(survey_n == 1),
+    has_con2 = any(survey_n == 2),
+    .by = transect
+  ) %>%
+  arrange(transect)
+
+analysis_transects <- transect_survey_coverage %>%
+  filter(has_baseline, has_con1, has_con2, latest_survey_n >= 3) %>%
+  pull(transect)
+
+baseline_only_transects <- transect_survey_coverage %>%
+  filter(!transect %in% analysis_transects) %>%
+  pull(transect)
+
+sediment_analysis <- sediment_raw %>%
+  filter(
+    transect %in% analysis_transects,
+    meter <= 50
+  ) %>%
+  mutate(
+    predicted_impact_class = case_when(
+      transect %in% c("ST22", "ST31") ~ "1 cm predicted",
+      transect %in% c("ST28", "ST5") ~ "1.5 mm predicted",
+      TRUE ~ "0 cm predicted"
+    ),
+    predicted_impact_class = factor(
+      predicted_impact_class,
+      levels = c("1 cm predicted", "1.5 mm predicted", "0 cm predicted")
+    )
+  )
+
+analysis_coverage <- sediment_analysis %>%
+  summarize(
+    n_meter_positions = n_distinct(meter),
+    first_date = min(date),
+    last_date = max(date),
+    latest_survey_n = max(survey_n),
+    .by = transect
+  ) %>%
+  arrange(transect)
+
+stopifnot(
+  length(analysis_transects) == 13,
+  all(analysis_coverage$n_meter_positions == 51),
+  all(!is.na(sediment_analysis$meter_mean_sediment_cm))
+)
+
+analysis_coverage
+```
+
+The analysis includes `r length(analysis_transects)` transects with Baseline,
+Con1, Con2, and later construction monitoring. For ST1 and ST38, the analysis
+uses meters 0--50 because Con1 and Con2 do not cover their full 150 m extent.
+The baseline-only transects (`r paste(baseline_only_transects, collapse = ", ")`)
+cannot be used to compare reference formulations through time.
+
+# Is the official baseline unusually high?
+
+## Transect-wide survey means
+
+```{r transect-survey-means, fig.width=12, fig.height=8}
+transect_survey_means <- sediment_analysis %>%
+  summarize(
+    transect_mean_cm = mean(meter_mean_sediment_cm),
+    transect_median_cm = median(meter_mean_sediment_cm),
+    .by = c(transect, date, survey, survey_n)
+  ) %>%
+  arrange(transect, survey_n)
+
+early_transect_means <- transect_survey_means %>%
+  filter(survey_n <= 6) %>%
+  mutate(
+    survey_label = factor(
+      survey,
+      levels = c("Baseline", paste0("Con", 1:6))
+    )
+  )
+
+ggplot(
+  early_transect_means,
+  aes(x = survey_label, y = transect_mean_cm, group = transect)
+) +
+  geom_line(color = "grey65", linewidth = 0.5) +
+  geom_point(
+    aes(color = survey_label == "Baseline"),
+    size = 1.8
+  ) +
+  facet_wrap(~ transect, scales = "free_y", ncol = 4) +
+  scale_color_manual(
+    values = c(`TRUE` = "#b2182b", `FALSE` = "#333333"),
+    guide = "none"
+  ) +
+  labs(
+    title = "Early transect-wide mean sediment depth",
+    subtitle = "Official Baseline is highlighted in red; free y-scales show within-transect changes",
+    x = NULL,
+    y = "Mean sediment depth (cm)"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
+    strip.text = element_text(face = "bold")
+  )
+```
+
+```{r all-transect-survey-means, fig.width=12, fig.height=9}
+ggplot(
+  transect_survey_means,
+  aes(x = date, y = transect_mean_cm, group = transect)
+) +
+  geom_line(color = "grey55", linewidth = 0.55) +
+  geom_point(
+    aes(color = survey == "Baseline"),
+    size = 1.5
+  ) +
+  facet_wrap(~ transect, scales = "free_y", ncol = 4) +
+  scale_color_manual(
+    values = c(`TRUE` = "#b2182b", `FALSE` = "#333333"),
+    guide = "none"
+  ) +
+  scale_x_date(
+    date_breaks = "2 months",
+    date_labels = "%b\n%Y",
+    expand = expansion(mult = c(0.02, 0.03))
+  ) +
+  labs(
+    title = "Transect-wide mean sediment depth across the complete monitoring record",
+    subtitle = "Official Baseline is highlighted in red; free y-scales show within-transect changes",
+    x = NULL,
+    y = "Mean sediment depth (cm)"
+  ) +
+  theme(
+    axis.text.x = element_text(size = 7),
+    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
+    strip.text = element_text(face = "bold")
+  )
+```
+
+## Meter-matched elevation above Con1 and Con2
+
+Comparisons are paired by transect and meter. Positive differences mean that
+the official baseline depth was greater than the comparison survey at the same
+location.
+
+```{r baseline-paired-differences}
+early_meter_wide <- sediment_analysis %>%
+  filter(survey_n %in% 0:2) %>%
+  select(transect, meter, survey_n, meter_mean_sediment_cm) %>%
+  mutate(
+    survey_key = recode(
+      as.character(survey_n),
+      `0` = "baseline_cm",
+      `1` = "con1_cm",
+      `2` = "con2_cm"
+    )
+  ) %>%
+  select(-survey_n) %>%
+  pivot_wider(names_from = survey_key, values_from = meter_mean_sediment_cm) %>%
+  mutate(
+    baseline_minus_con1_cm = baseline_cm - con1_cm,
+    baseline_minus_con2_cm = baseline_cm - con2_cm,
+    baseline_minus_early_mean_cm = baseline_cm - (con1_cm + con2_cm) / 2
+  )
+
+paired_long <- early_meter_wide %>%
+  pivot_longer(
+    c(baseline_minus_con1_cm, baseline_minus_con2_cm),
+    names_to = "comparison",
+    values_to = "baseline_excess_cm"
+  ) %>%
+  mutate(
+    comparison = recode(
+      comparison,
+      baseline_minus_con1_cm = "Baseline - Con1",
+      baseline_minus_con2_cm = "Baseline - Con2"
+    )
+  )
+
+paired_summary <- paired_long %>%
+  summarize(
+    n_meter_positions = n(),
+    mean_excess_cm = mean(baseline_excess_cm),
+    median_excess_cm = median(baseline_excess_cm),
+    pct_baseline_higher = mean(baseline_excess_cm > 0),
+    .by = c(transect, comparison)
+  )
+
+paired_summary
+```
+
+```{r paired-difference-plot, fig.width=12, fig.height=8}
+ggplot(
+  paired_long,
+  aes(x = comparison, y = baseline_excess_cm, fill = comparison)
+) +
+  geom_hline(yintercept = 0, color = "grey30", linewidth = 0.4) +
+  geom_boxplot(width = 0.65, outlier.size = 0.7) +
+  facet_wrap(~ transect, ncol = 4) +
+  scale_fill_manual(values = c(
+    "Baseline - Con1" = "#b2182b",
+    "Baseline - Con2" = "#ef8a62"
+  )) +
+  labs(
+    title = "Meter-matched official baseline elevation",
+    subtitle = "Positive values indicate that official Baseline exceeds the early construction survey",
+    x = NULL,
+    y = "Official baseline excess (cm)",
+    fill = NULL
+  ) +
+  guides(fill = "none") +
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
+    strip.text = element_text(face = "bold")
+  )
+```
+
+## Paired tests by transect
+
+The Wilcoxon signed-rank test evaluates whether paired differences are centered
+at zero. The exact binomial sign test asks only whether positive differences
+outnumber negative differences, making it less sensitive to unusually large
+values. False-discovery-rate-adjusted p-values account for testing multiple
+transects.
+
+```{r paired-tests}
+safe_wilcox_p <- function(x) {
+  tryCatch(
+    wilcox.test(x, mu = 0, exact = FALSE)$p.value,
+    error = function(e) NA_real_
+  )
+}
+
+safe_sign_p <- function(x) {
+  x <- x[x != 0 & !is.na(x)]
+  if (length(x) == 0) return(NA_real_)
+  binom.test(sum(x > 0), length(x), p = 0.5)$p.value
+}
+
+paired_tests <- paired_long %>%
+  summarize(
+    n = n(),
+    median_excess_cm = median(baseline_excess_cm),
+    pct_baseline_higher = mean(baseline_excess_cm > 0),
+    wilcoxon_p = safe_wilcox_p(baseline_excess_cm),
+    sign_test_p = safe_sign_p(baseline_excess_cm),
+    .by = c(transect, comparison)
+  ) %>%
+  mutate(
+    wilcoxon_fdr = p.adjust(wilcoxon_p, method = "BH"),
+    sign_test_fdr = p.adjust(sign_test_p, method = "BH"),
+    .by = comparison
+  ) %>%
+  arrange(comparison, transect)
+
+paired_tests
+```
+
+## Transect-level robustness tests
+
+Adjacent meter positions are not independent ecological replicates. The tests
+below therefore reduce each transect to its mean paired difference and treat the
+13 transects as the independent analysis units. These are the primary tests for
+whether official-baseline elevation is consistent across the monitoring area;
+the meter-level tests above describe within-transect spatial consistency.
+
+```{r transect-level-tests}
+transect_level_differences <- paired_long %>%
+  summarize(
+    mean_baseline_excess_cm = mean(baseline_excess_cm),
+    median_baseline_excess_cm = median(baseline_excess_cm),
+    .by = c(transect, comparison)
+  )
+
+transect_level_tests <- transect_level_differences %>%
+  summarize(
+    n_transects = n(),
+    mean_of_transect_means_cm = mean(mean_baseline_excess_cm),
+    median_of_transect_means_cm = median(mean_baseline_excess_cm),
+    pct_transects_baseline_higher = mean(mean_baseline_excess_cm > 0),
+    wilcoxon_p = safe_wilcox_p(mean_baseline_excess_cm),
+    sign_test_p = safe_sign_p(mean_baseline_excess_cm),
+    .by = comparison
+  )
+
+transect_level_tests
+```
+
+## Is Baseline to Con1 an unusual transition?
+
+This comparison uses transect-wide means so each transect contributes equally.
+The signed Baseline-to-Con1 shift is compared with each subsequent early shift
+through Con6. A strongly negative first shift that is larger than ordinary
+construction-to-construction changes supports the interpretation that Baseline
+captured an unusual state.
+
+```{r early-transition-analysis, fig.width=11, fig.height=6.5}
+early_transitions <- transect_survey_means %>%
+  filter(survey_n <= 6) %>%
+  arrange(transect, survey_n) %>%
+  mutate(
+    previous_survey_n = lag(survey_n),
+    transition_delta_cm = transect_mean_cm - lag(transect_mean_cm),
+    transition = case_when(
+      survey_n == 1 ~ "Baseline to Con1",
+      TRUE ~ paste0("Con", previous_survey_n, " to Con", survey_n)
+    ),
+    .by = transect
+  ) %>%
+  filter(!is.na(transition_delta_cm)) %>%
+  mutate(
+    transition = factor(
+      transition,
+      levels = c(
+        "Baseline to Con1",
+        "Con1 to Con2",
+        "Con2 to Con3",
+        "Con3 to Con4",
+        "Con4 to Con5",
+        "Con5 to Con6"
+      )
+    )
+  )
+
+transition_summary <- early_transitions %>%
+  summarize(
+    n_transects = n(),
+    mean_shift_cm = mean(transition_delta_cm),
+    median_shift_cm = median(transition_delta_cm),
+    mean_absolute_shift_cm = mean(abs(transition_delta_cm)),
+    .by = transition
+  )
+
+transition_by_transect <- early_transitions %>%
+  summarize(
+    baseline_to_con1_cm = first(
+      transition_delta_cm[transition == "Baseline to Con1"]
+    ),
+    typical_later_shift_cm = median(
+      transition_delta_cm[transition != "Baseline to Con1"]
+    ),
+    baseline_absolute_shift_cm = abs(baseline_to_con1_cm),
+    typical_later_absolute_shift_cm = median(
+      abs(transition_delta_cm[transition != "Baseline to Con1"])
+    ),
+    .by = transect
+  )
+
+transition_test <- transition_by_transect %>%
+  summarize(
+    paired_absolute_shift_p = wilcox.test(
+      baseline_absolute_shift_cm,
+      typical_later_absolute_shift_cm,
+      alternative = "greater",
+      paired = TRUE,
+      exact = FALSE
+    )$p.value,
+    paired_signed_shift_p = wilcox.test(
+      baseline_to_con1_cm,
+      typical_later_shift_cm,
+      alternative = "less",
+      paired = TRUE,
+      exact = FALSE
+    )$p.value
+  )
+
+ggplot(
+  early_transitions,
+  aes(x = transition, y = transition_delta_cm)
+) +
+  geom_hline(yintercept = 0, color = "grey30", linewidth = 0.4) +
+  geom_boxplot(
+    aes(fill = transition == "Baseline to Con1"),
+    width = 0.65,
+    outlier.shape = NA
+  ) +
+  geom_jitter(width = 0.1, height = 0, size = 1.6, alpha = 0.75) +
+  scale_fill_manual(
+    values = c(`TRUE` = "#b2182b", `FALSE` = "grey75"),
+    guide = "none"
+  ) +
+  labs(
+    title = "Early changes in transect-wide mean sediment depth",
+    subtitle = "Each point is one transect; negative shifts indicate declining sediment depth",
+    x = NULL,
+    y = "Change from previous survey (cm)"
+  ) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+transition_summary
+transition_test
+```
+
+# When does a new sediment regime appear?
+
+Later surveys may improve the estimate of ordinary background conditions, but
+only until the system begins to depart from that regime. A defensible expanded
+reference window therefore requires two findings: adding another survey should
+improve prediction of the next survey, and it should not coincide with a new,
+spatially selective or sustained shift that may reflect project-related flux.
+
+## Complete survey-to-survey transition scan
+
+For every transect and meter, each observation is compared with the immediately
+preceding available survey. The transect mean is used as the independent unit
+for regional tests; meter-level summaries retain information about whether a
+shift is spatially widespread along a transect.
+
+```{r full-transition-scan}
+meter_transitions <- sediment_analysis %>%
+  arrange(transect, meter, survey_n) %>%
+  mutate(
+    previous_survey = lag(survey),
+    previous_survey_n = lag(survey_n),
+    previous_depth_cm = lag(meter_mean_sediment_cm),
+    transition_delta_cm = meter_mean_sediment_cm - previous_depth_cm,
+    .by = c(transect, meter)
+  ) %>%
+  filter(!is.na(previous_depth_cm)) %>%
+  mutate(
+    transition_label = paste0(previous_survey, " to ", survey)
+  )
+
+transect_transitions <- meter_transitions %>%
+  summarize(
+    mean_transition_cm = mean(transition_delta_cm),
+    median_transition_cm = median(transition_delta_cm),
+    mean_absolute_meter_change_cm = mean(abs(transition_delta_cm)),
+    pct_meter_positions_increasing = mean(transition_delta_cm > 0),
+    meter_wilcoxon_p = safe_wilcox_p(transition_delta_cm),
+    .by = c(
+      transect,
+      predicted_impact_class,
+      date,
+      survey,
+      survey_n,
+      previous_survey,
+      previous_survey_n,
+      transition_label
+    )
+  ) %>%
+  mutate(
+    meter_wilcoxon_fdr = p.adjust(meter_wilcoxon_p, method = "BH"),
+    .by = transect
+  )
+
+regional_transition_tests <- transect_transitions %>%
+  summarize(
+    n_transects = n(),
+    regional_mean_shift_cm = mean(mean_transition_cm),
+    regional_median_shift_cm = median(mean_transition_cm),
+    pct_transects_increasing = mean(mean_transition_cm > 0),
+    transect_wilcoxon_p = safe_wilcox_p(mean_transition_cm),
+    transect_sign_p = safe_sign_p(mean_transition_cm),
+    .by = c(date, survey, survey_n, previous_survey, transition_label)
+  ) %>%
+  arrange(survey_n) %>%
+  mutate(
+    transect_wilcoxon_fdr = p.adjust(transect_wilcoxon_p, method = "BH"),
+    transect_sign_fdr = p.adjust(transect_sign_p, method = "BH")
+  )
+
+regional_transition_tests
+```
+
+```{r transition-heatmap, fig.width=12, fig.height=7}
+transition_color_limit <- max(abs(quantile(
+  transect_transitions$mean_transition_cm,
+  probs = c(0.02, 0.98),
+  na.rm = TRUE
+)))
+
+ggplot(
+  transect_transitions,
+  aes(
+    x = fct_reorder(survey, survey_n),
+    y = fct_rev(factor(transect)),
+    fill = mean_transition_cm
+  )
+) +
+  geom_tile(color = "white", linewidth = 0.15) +
+  geom_point(
+    data = transect_transitions %>%
+      filter(meter_wilcoxon_fdr < 0.05),
+    shape = 21,
+    fill = NA,
+    color = "grey15",
+    size = 1.2,
+    stroke = 0.35
+  ) +
+  scale_fill_gradient2(
+    low = "#2166ac",
+    mid = "white",
+    high = "#b2182b",
+    midpoint = 0,
+    limits = c(-transition_color_limit, transition_color_limit),
+    oob = scales::squish
+  ) +
+  labs(
+    title = "Survey-to-survey shifts in transect mean sediment depth",
+    subtitle = "Blue indicates decline and red indicates increase; outlines mark meter-level FDR < 0.05",
+    x = "Ending survey",
+    y = "Transect",
+    fill = "Mean shift (cm)"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Deviations from the robust three-survey early state
+
+The meter-specific Baseline-Con1-Con2 median is used here only as a diagnostic
+anchor. A project-related pattern would be more plausible if positive deviations
+emerge preferentially or earlier in transects with modeled exposure, rather
+than appearing synchronously across all transects.
+
+```{r deviation-by-impact-class, fig.width=12, fig.height=8}
+robust_early_reference <- sediment_analysis %>%
+  filter(survey_n %in% 0:2) %>%
+  summarize(
+    robust_early_reference_cm = median(meter_mean_sediment_cm),
+    .by = c(transect, meter)
+  )
+
+survey_deviations <- sediment_analysis %>%
+  filter(survey_n >= 3) %>%
+  left_join(robust_early_reference, by = c("transect", "meter")) %>%
+  mutate(
+    deviation_cm = meter_mean_sediment_cm - robust_early_reference_cm
+  ) %>%
+  summarize(
+    mean_deviation_cm = mean(deviation_cm),
+    median_deviation_cm = median(deviation_cm),
+    pct_meter_positions_increasing = mean(deviation_cm > 0),
+    .by = c(
+      transect,
+      predicted_impact_class,
+      date,
+      survey,
+      survey_n
+    )
+  )
+
+ggplot(
+  survey_deviations,
+  aes(
+    x = survey_n,
+    y = mean_deviation_cm,
+    color = predicted_impact_class,
+    group = transect
+  )
+) +
+  geom_hline(yintercept = 0, color = "grey30", linewidth = 0.4) +
+  geom_line(linewidth = 0.65, alpha = 0.75) +
+  geom_point(size = 1.3) +
+  facet_wrap(~ predicted_impact_class, ncol = 1, scales = "free_y") +
+  scale_color_manual(values = c(
+    "1 cm predicted" = "#b2182b",
+    "1.5 mm predicted" = "#ef8a62",
+    "0 cm predicted" = "#2166ac"
+  )) +
+  scale_x_continuous(breaks = sort(unique(survey_deviations$survey_n))) +
+  labs(
+    title = "Deviation from the robust early state by modeled impact class",
+    subtitle = "Each line is one transect; selective positive departures are more compatible with project-related flux",
+    x = "Construction survey number",
+    y = "Mean deviation from early median reference (cm)",
+    color = "Modeled sedimentation"
+  ) +
+  guides(color = "none") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(face = "bold")
+  )
+```
+
+## Sequential reference-window evaluation
+
+Candidate windows are extended one survey at a time from Con1 through Con6.
+For each endpoint, both a mean and a median meter-specific reference are used to
+predict the next survey. A useful additional survey should reduce absolute
+next-survey error without causing a large systematic drift in the reference.
+
+```{r sequential-reference-windows}
+reference_window_ends <- 1:6
+
+sequential_references <- crossing(
+  sediment_analysis %>% distinct(transect, meter),
+  window_end = reference_window_ends,
+  estimator = c("Mean", "Median")
+) %>%
+  left_join(
+    sediment_analysis %>%
+      select(transect, meter, survey_n, meter_mean_sediment_cm),
+    by = c("transect", "meter"),
+    relationship = "many-to-many"
+  ) %>%
+  filter(survey_n <= window_end) %>%
+  summarize(
+    reference_cm = if_else(
+      first(estimator) == "Mean",
+      mean(meter_mean_sediment_cm),
+      median(meter_mean_sediment_cm)
+    ),
+    n_reference_surveys = n(),
+    .by = c(transect, meter, window_end, estimator)
+  )
+
+sequential_evaluation <- sequential_references %>%
+  left_join(
+    sediment_analysis %>%
+      select(
+        transect,
+        meter,
+        next_survey_n = survey_n,
+        next_depth_cm = meter_mean_sediment_cm
+      ),
+    by = c("transect", "meter"),
+    relationship = "many-to-many"
+  ) %>%
+  filter(next_survey_n == window_end + 1) %>%
+  mutate(next_delta_cm = next_depth_cm - reference_cm) %>%
+  summarize(
+    transect_next_bias_cm = mean(next_delta_cm),
+    transect_next_mae_cm = mean(abs(next_delta_cm)),
+    .by = c(transect, window_end, estimator)
+  )
+
+sequential_reference_drift <- sequential_references %>%
+  arrange(transect, meter, estimator, window_end) %>%
+  mutate(
+    reference_drift_cm = reference_cm - lag(reference_cm),
+    .by = c(transect, meter, estimator)
+  ) %>%
+  filter(!is.na(reference_drift_cm)) %>%
+  summarize(
+    transect_mean_reference_drift_cm = mean(reference_drift_cm),
+    transect_absolute_reference_drift_cm = mean(abs(reference_drift_cm)),
+    .by = c(transect, window_end, estimator)
+  )
+
+sequential_summary <- sequential_evaluation %>%
+  summarize(
+    median_next_bias_cm = median(transect_next_bias_cm),
+    mean_absolute_transect_bias_cm = mean(abs(transect_next_bias_cm)),
+    median_next_mae_cm = median(transect_next_mae_cm),
+    .by = c(window_end, estimator)
+  ) %>%
+  left_join(
+    sequential_reference_drift %>%
+      summarize(
+        median_absolute_reference_drift_cm = median(
+          transect_absolute_reference_drift_cm
+        ),
+        .by = c(window_end, estimator)
+      ),
+    by = c("window_end", "estimator")
+  )
+
+sequential_summary
+```
+
+```{r sequential-window-plot, fig.width=11, fig.height=8}
+window_bias_plot <- ggplot(
+  sequential_summary,
+  aes(
+    x = window_end,
+    y = mean_absolute_transect_bias_cm,
+    color = estimator
+  )
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2) +
+  scale_x_continuous(
+    breaks = reference_window_ends,
+    labels = paste0("Through Con", reference_window_ends)
+  ) +
+  scale_color_manual(values = c("Mean" = "#b2182b", "Median" = "#2166ac")) +
+  labs(
+    title = "Prediction of the next construction survey",
+    x = NULL,
+    y = "Mean absolute transect bias (cm)",
+    color = "Reference estimator"
+  ) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+window_drift_plot <- ggplot(
+  sequential_summary,
+  aes(
+    x = window_end,
+    y = median_absolute_reference_drift_cm,
+    color = estimator
+  )
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2) +
+  scale_x_continuous(
+    breaks = reference_window_ends,
+    labels = paste0("Add Con", reference_window_ends)
+  ) +
+  scale_color_manual(values = c("Mean" = "#b2182b", "Median" = "#2166ac")) +
+  labs(
+    title = "Reference movement when each survey is added",
+    x = NULL,
+    y = "Median absolute reference drift (cm)",
+    color = "Reference estimator"
+  ) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+window_bias_plot / window_drift_plot +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+The sequential analysis is intended to identify plausible reference windows,
+not mechanically choose the window with the smallest prediction error. The
+preferred endpoint should precede any sustained or impact-class-specific
+departure in the transition and deviation plots. Surveys after that point are
+outcomes to be detected, not observations to be absorbed into the reference.
+
+# Candidate alternative references
+
+Four references are evaluated at each transect and meter:
+
+1. **Official Baseline**: the regulatory pre-construction observation.
+2. **Baseline-Con1-Con2 mean**: the current localized-analysis sensitivity
+   reference; uses all three surveys but is sensitive to one high value.
+3. **Baseline-Con1-Con2 median**: robust to one unusually high or low survey.
+   If Baseline is the highest of the three, this selects the higher of Con1 and
+   Con2 and is therefore conservative relative to their mean.
+4. **Con1-Con2 mean**: excludes the official baseline and provides the clearest
+   estimate of the early construction state, but has the greatest risk of
+   absorbing genuine early project-related deposition.
+
+```{r candidate-references}
+candidate_references <- early_meter_wide %>%
+  transmute(
+    transect,
+    meter,
+    `Official Baseline` = baseline_cm,
+    `Baseline-Con1-Con2 mean` = (baseline_cm + con1_cm + con2_cm) / 3,
+    `Baseline-Con1-Con2 median` = pmap_dbl(
+      list(baseline_cm, con1_cm, con2_cm),
+      ~ median(c(...))
+    ),
+    `Con1-Con2 mean` = (con1_cm + con2_cm) / 2
+  ) %>%
+  pivot_longer(
+    -c(transect, meter),
+    names_to = "reference_method",
+    values_to = "reference_cm"
+  ) %>%
+  mutate(
+    reference_method = factor(
+      reference_method,
+      levels = c(
+        "Official Baseline",
+        "Baseline-Con1-Con2 mean",
+        "Baseline-Con1-Con2 median",
+        "Con1-Con2 mean"
+      )
+    )
+  )
+
+candidate_contrasts <- candidate_references %>%
+  select(transect, meter, reference_method, reference_cm) %>%
+  pivot_wider(names_from = reference_method, values_from = reference_cm) %>%
+  mutate(
+    mean3_reduction_cm =
+      `Official Baseline` - `Baseline-Con1-Con2 mean`,
+    median3_reduction_cm =
+      `Official Baseline` - `Baseline-Con1-Con2 median`,
+    early2_reduction_cm =
+      `Official Baseline` - `Con1-Con2 mean`
+  )
+
+candidate_contrast_summary <- candidate_contrasts %>%
+  summarize(
+    mean3_reduction_cm = mean(mean3_reduction_cm),
+    median3_reduction_cm = mean(median3_reduction_cm),
+    early2_reduction_cm = mean(early2_reduction_cm),
+    pct_median3_below_official = mean(median3_reduction_cm > 0),
+    .by = transect
+  )
+
+candidate_contrast_summary
+```
+
+## How often is each early survey selected by the median?
+
+```{r median-source}
+median_source <- early_meter_wide %>%
+  mutate(
+    median_reference_cm = pmap_dbl(
+      list(baseline_cm, con1_cm, con2_cm),
+      ~ median(c(...))
+    ),
+    median_source = case_when(
+      near(median_reference_cm, baseline_cm) ~ "Official Baseline",
+      near(median_reference_cm, con1_cm) ~ "Con1",
+      near(median_reference_cm, con2_cm) ~ "Con2",
+      TRUE ~ "Tie"
+    )
+  ) %>%
+  count(transect, median_source) %>%
+  group_by(transect) %>%
+  mutate(fraction = n / sum(n)) %>%
+  ungroup()
+
+ggplot(
+  median_source,
+  aes(x = transect, y = fraction, fill = median_source)
+) +
+  geom_col(width = 0.75) +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
+  scale_fill_manual(values = c(
+    "Official Baseline" = "#555555",
+    "Con1" = "#d6604d",
+    "Con2" = "#4393c3",
+    "Tie" = "#cccccc"
+  )) +
+  labs(
+    title = "Source survey selected by the three-survey median",
+    subtitle = "The median retains the middle observation independently at each meter",
+    x = "Transect",
+    y = "Meter positions",
+    fill = "Selected survey"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Holdout evaluation using Con3-Con6
+
+Con3-Con6 are not used to construct any candidate. Their deltas provide a common
+early holdout period for evaluating how strongly each reference systematically
+centers later observations above or below zero. This is a stability diagnostic,
+not proof that the holdout surveys are impact-free.
+
+```{r holdout-evaluation}
+holdout_deltas <- sediment_analysis %>%
+  filter(survey_n %in% 3:6) %>%
+  select(transect, meter, date, survey, survey_n, meter_mean_sediment_cm) %>%
+  left_join(
+    candidate_references,
+    by = c("transect", "meter"),
+    relationship = "many-to-many"
+  ) %>%
+  mutate(delta_cm = meter_mean_sediment_cm - reference_cm)
+
+holdout_by_transect <- holdout_deltas %>%
+  summarize(
+    mean_bias_cm = mean(delta_cm),
+    median_bias_cm = median(delta_cm),
+    mean_absolute_delta_cm = mean(abs(delta_cm)),
+    pct_below_reference = mean(delta_cm < 0),
+    .by = c(transect, reference_method)
+  )
+
+holdout_overall <- holdout_by_transect %>%
+  summarize(
+    median_transect_bias_cm = median(mean_bias_cm),
+    mean_absolute_transect_bias_cm = mean(abs(mean_bias_cm)),
+    median_meter_absolute_delta_cm = median(mean_absolute_delta_cm),
+    median_pct_below_reference = median(pct_below_reference),
+    .by = reference_method
+  ) %>%
+  arrange(mean_absolute_transect_bias_cm)
+
+holdout_overall
+```
+
+```{r holdout-bias-plot, fig.width=11, fig.height=7}
+ggplot(
+  holdout_by_transect,
+  aes(x = reference_method, y = mean_bias_cm, color = reference_method)
+) +
+  geom_hline(yintercept = 0, color = "grey30", linewidth = 0.4) +
+  geom_boxplot(width = 0.55, outlier.shape = NA, color = "grey45") +
+  geom_point(
+    aes(group = transect),
+    position = position_jitter(width = 0.08, height = 0),
+    size = 2,
+    alpha = 0.85
+  ) +
+  scale_color_manual(values = c(
+    "Official Baseline" = "#555555",
+    "Baseline-Con1-Con2 mean" = "#b2182b",
+    "Baseline-Con1-Con2 median" = "#ef8a62",
+    "Con1-Con2 mean" = "#2166ac"
+  )) +
+  labs(
+    title = "Reference bias during the Con3-Con6 holdout period",
+    subtitle = "Each point is one transect; values below zero indicate that holdout depths are below the reference",
+    x = NULL,
+    y = "Mean holdout delta (cm)",
+    color = "Reference"
+  ) +
+  guides(color = guide_legend(nrow = 2)) +
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    legend.position = "bottom"
+  )
+```
+
+# Bootstrap uncertainty for reference differences
+
+Meters are resampled within each transect. The intervals quantify uncertainty
+in the average difference between the official baseline and each alternative;
+they do not account for temporal autocorrelation or prove that one reference is
+causally correct.
+
+```{r bootstrap-reference-differences}
+set.seed(240917)
+
+bootstrap_mean_ci <- function(x, n_boot = 4000) {
+  boot_means <- replicate(
+    n_boot,
+    mean(sample(x, size = length(x), replace = TRUE))
+  )
+  tibble(
+    estimate = mean(x),
+    lower_95 = quantile(boot_means, 0.025),
+    upper_95 = quantile(boot_means, 0.975)
+  )
+}
+
+bootstrap_differences <- candidate_contrasts %>%
+  select(
+    transect,
+    `Baseline-Con1-Con2 mean` = mean3_reduction_cm,
+    `Baseline-Con1-Con2 median` = median3_reduction_cm,
+    `Con1-Con2 mean` = early2_reduction_cm
+  ) %>%
+  pivot_longer(
+    -transect,
+    names_to = "alternative_reference",
+    values_to = "official_minus_alternative_cm"
+  ) %>%
+  nest(.by = c(transect, alternative_reference)) %>%
+  mutate(
+    ci = map(
+      data,
+      ~ bootstrap_mean_ci(.x$official_minus_alternative_cm)
+    )
+  ) %>%
+  select(-data) %>%
+  unnest(ci)
+
+bootstrap_differences
+```
+
+```{r bootstrap-plot, fig.width=11, fig.height=8}
+ggplot(
+  bootstrap_differences,
+  aes(
+    x = estimate,
+    y = fct_rev(factor(transect)),
+    xmin = lower_95,
+    xmax = upper_95,
+    color = alternative_reference
+  )
+) +
+  geom_vline(xintercept = 0, color = "grey30", linewidth = 0.4) +
+  geom_errorbarh(
+    position = position_dodge(width = 0.6),
+    height = 0.15,
+    linewidth = 0.5
+  ) +
+  geom_point(position = position_dodge(width = 0.6), size = 1.8) +
+  scale_color_manual(values = c(
+    "Baseline-Con1-Con2 mean" = "#b2182b",
+    "Baseline-Con1-Con2 median" = "#ef8a62",
+    "Con1-Con2 mean" = "#2166ac"
+  )) +
+  labs(
+    title = "Official baseline elevation above candidate alternatives",
+    subtitle = "Mean meter-matched difference with within-transect bootstrap 95% intervals",
+    x = "Official baseline minus alternative reference (cm)",
+    y = "Transect",
+    color = "Alternative reference"
+  ) +
+  theme(legend.position = "bottom")
+```
+
+# Regulatory-threshold sensitivity
+
+The practical consequence of reference choice is evaluated using cumulative net
+exceedance at 1.5 mm, 5 mm, and 1 cm. Positive values mean that accumulation
+prevalence exceeds equivalent-loss prevalence.
+
+```{r threshold-sensitivity}
+regulatory_thresholds <- tibble(
+  threshold_cm = c(0.15, 0.5, 1),
+  threshold_label = factor(
+    c("1.5 mm", "5 mm", "1 cm"),
+    levels = c("1.5 mm", "5 mm", "1 cm")
+  )
+)
+
+candidate_all_deltas <- sediment_analysis %>%
+  filter(survey_n >= 3) %>%
+  select(transect, meter, date, survey, survey_n, meter_mean_sediment_cm) %>%
+  left_join(
+    candidate_references,
+    by = c("transect", "meter"),
+    relationship = "many-to-many"
+  ) %>%
+  mutate(delta_cm = meter_mean_sediment_cm - reference_cm)
+
+threshold_sensitivity <- crossing(
+  candidate_all_deltas,
+  regulatory_thresholds
+) %>%
+  summarize(
+    accumulation_fraction = mean(delta_cm >= threshold_cm),
+    loss_fraction = mean(delta_cm <= -threshold_cm),
+    net_exceedance = accumulation_fraction - loss_fraction,
+    .by = c(
+      transect,
+      date,
+      survey,
+      survey_n,
+      reference_method,
+      threshold_cm,
+      threshold_label
+    )
+  )
+
+threshold_sensitivity_summary <- threshold_sensitivity %>%
+  summarize(
+    median_net_exceedance = median(net_exceedance),
+    maximum_net_exceedance = max(net_exceedance),
+    pct_surveys_positive = mean(net_exceedance > 0),
+    .by = c(reference_method, threshold_label)
+  )
+
+threshold_sensitivity_summary
+```
+
+```{r threshold-sensitivity-plot, fig.width=12, fig.height=7}
+ggplot(
+  threshold_sensitivity,
+  aes(x = reference_method, y = net_exceedance, color = reference_method)
+) +
+  geom_hline(yintercept = 0, color = "grey30", linewidth = 0.4) +
+  geom_boxplot(outlier.shape = NA, width = 0.6, color = "grey50") +
+  facet_wrap(~ threshold_label, nrow = 1) +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
+  scale_color_manual(values = c(
+    "Official Baseline" = "#555555",
+    "Baseline-Con1-Con2 mean" = "#b2182b",
+    "Baseline-Con1-Con2 median" = "#ef8a62",
+    "Con1-Con2 mean" = "#2166ac"
+  )) +
+  labs(
+    title = "Sensitivity of regulatory-threshold net exceedance to reference choice",
+    subtitle = "Distributions include every construction survey from Con3 onward across all monitored transects",
+    x = NULL,
+    y = "Accumulation minus equivalent-loss prevalence",
+    color = "Reference"
+  ) +
+  guides(color = guide_legend(nrow = 2)) +
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  )
+```
+
+# Decision matrix
+
+```{r decision-matrix}
+decision_matrix <- tribble(
+  ~reference_method, ~official_status, ~outlier_resistance, ~early_deposition_risk, ~interpretive_note,
+  "Official Baseline", "Regulatory baseline", "None", "None", "Direct BMP comparison, but may represent a transient high state",
+  "Baseline-Con1-Con2 mean", "Sensitivity reference", "Low", "Moderate", "Uses all three surveys but a high baseline still pulls the reference upward",
+  "Baseline-Con1-Con2 median", "Sensitivity reference", "High for one anomalous survey", "Moderate", "Retains official data and selects the middle early observation at each meter",
+  "Con1-Con2 mean", "Sensitivity reference", "Not affected by official baseline", "Highest", "Best description of the early construction state, but most vulnerable to absorbing early effects"
+)
+
+decision_matrix
+```
+
+# Provisional interpretation
+
+```{r provisional-metrics, include=FALSE}
+n_baseline_higher_con1 <- paired_tests %>%
+  filter(
+    comparison == "Baseline - Con1",
+    median_excess_cm > 0,
+    wilcoxon_fdr < 0.05
+  ) %>%
+  nrow()
+
+n_baseline_higher_con2 <- paired_tests %>%
+  filter(
+    comparison == "Baseline - Con2",
+    median_excess_cm > 0,
+    wilcoxon_fdr < 0.05
+  ) %>%
+  nrow()
+
+overall_baseline_excess <- early_meter_wide %>%
+  summarize(mean(baseline_minus_early_mean_cm)) %>%
+  pull()
+
+best_holdout_method <- holdout_overall %>%
+  slice_min(mean_absolute_transect_bias_cm, n = 1, with_ties = FALSE) %>%
+  pull(reference_method) %>%
+  as.character()
+
+best_sequential_median_window <- sequential_summary %>%
+  filter(estimator == "Median") %>%
+  slice_min(mean_absolute_transect_bias_cm, n = 1, with_ties = FALSE) %>%
+  pull(window_end)
+
+baseline_transition_p <- transition_test$paired_absolute_shift_p
+```
+
+Across the 13 monitored transects, the official baseline is significantly
+higher than Con1 at `r n_baseline_higher_con1` transects and significantly
+higher than Con2 at `r n_baseline_higher_con2` transects after false-discovery
+rate adjustment. Averaged across all paired meter positions, the official
+baseline exceeds the Con1-Con2 mean by `r round(overall_baseline_excess, 2)` cm.
+At the transect level, the Baseline-to-Con1 shift is larger than each
+transect's typical early absolute shift (`r paste0("paired p = ",
+format.pval(baseline_transition_p, digits = 2))`).
+
+The candidate with the smallest mean absolute transect-level bias during the
+Con3-Con6 holdout is **`r best_holdout_method`**. That result should be weighed
+against regulatory continuity and the possibility that early construction
+surveys already include project effects.
+
+When reference windows are extended sequentially, the median estimator has its
+smallest next-survey transect bias for a window ending at **Con`r
+best_sequential_median_window`**. This makes surveys through that point worth
+considering in the reference-window discussion, but only if the transition and
+modeled-impact-class diagnostics show no selective or sustained project-like
+departure before then. The sequential result is evidence about temporal
+stability, not a license to absorb all surveys through Con`r
+best_sequential_median_window` into baseline.
+
+For a single robust sensitivity reference applied consistently across
+transects, the **meter-specific Baseline-Con1-Con2 median** is a strong default
+candidate because it:
+
+- uses the official baseline rather than discarding it;
+- resists one unusually high or low early survey;
+- remains meter-matched and therefore preserves localized spatial structure;
+- is conservative relative to the Con1-Con2 mean whenever Baseline is the
+  highest of the three observations.
+
+The official baseline should still be retained in regulatory reporting, with
+the robust alternative presented as a clearly labeled sensitivity analysis.
+Before changing the localized-analysis workflow, the statistical evidence in
+this report should be considered alongside field notes, sampling conditions,
+seasonality, construction timing, and any documented method changes.
