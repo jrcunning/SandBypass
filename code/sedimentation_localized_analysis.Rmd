@@ -14,6 +14,7 @@ library(readxl)
 library(janitor)
 library(ggrepel)
 library(ggspatial)
+library(patchwork)
 
 project_dir <- if (basename(getwd()) == "code") dirname(getwd()) else getwd()
 knitr::opts_knit$set(root.dir = project_dir)
@@ -221,7 +222,11 @@ transect_map <- ggplot(
 transect_map
 ```
 
-## ST22 sediment deltas
+# Individual transect case studies
+
+## Case study 1: ST22
+
+### Sediment deltas
 
 For each survey, the three sediment-depth replicates are averaged at each meter
 position. The baseline mean at that same meter position is then subtracted from
@@ -300,351 +305,7 @@ stopifnot(
 st22_delta_coverage
 ```
 
-### Weekly density distributions
-
-The density curves use a common horizontal scale. Fill colors classify the
-delta represented by each portion of the curve, rather than classifying an
-entire survey from a summary statistic.
-
-```{r st22-density-data}
-st22_delta_limits <- range(st22_meter_deltas$sediment_delta_cm) + c(-0.5, 0.5)
-
-st22_density <- st22_meter_deltas %>%
-  group_by(date, survey, survey_n) %>%
-  group_modify(~ {
-    density_estimate <- density(
-      .x$sediment_delta_cm,
-      from = st22_delta_limits[1],
-      to = st22_delta_limits[2],
-      n = 1024,
-      na.rm = TRUE
-    )
-
-    tibble(
-      sediment_delta_cm = density_estimate$x,
-      density = density_estimate$y
-    )
-  }) %>%
-  ungroup() %>%
-  mutate(
-    delta_band = case_when(
-      sediment_delta_cm >= 1 ~ ">= 1 cm",
-      sediment_delta_cm >= 0.5 ~ ">= 5 mm to < 1 cm",
-      sediment_delta_cm >= 0.15 ~ ">= 1.5 mm to < 5 mm",
-      TRUE ~ "< 1.5 mm"
-    ),
-    delta_band = factor(
-      delta_band,
-      levels = c(
-        ">= 1 cm",
-        ">= 5 mm to < 1 cm",
-        ">= 1.5 mm to < 5 mm",
-        "< 1.5 mm"
-      )
-    ),
-    survey_label = paste0(
-      survey,
-      "\n",
-      format(date, "%Y-%m-%d")
-    ),
-    survey_label = fct_reorder(survey_label, survey_n)
-  )
-```
-
-```{r st22-density-plot, fig.width=11, fig.height=15}
-st22_density_plot <- ggplot(
-  st22_density,
-  aes(x = sediment_delta_cm, y = density)
-) +
-  geom_area(
-    aes(fill = delta_band, group = delta_band),
-    color = NA,
-    alpha = 0.9
-  ) +
-  geom_line(linewidth = 0.45, color = "grey15") +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey45",
-    linewidth = 0.3,
-    linetype = "dotted"
-  ) +
-  facet_wrap(~ survey_label, ncol = 4) +
-  scale_fill_manual(
-    values = c(
-      ">= 1 cm" = "#d73027",
-      ">= 5 mm to < 1 cm" = "#f28e2b",
-      ">= 1.5 mm to < 5 mm" = "#ffd54f",
-      "< 1.5 mm" = "white"
-    ),
-    drop = FALSE
-  ) +
-  scale_x_continuous(
-    breaks = seq(
-      floor(st22_delta_limits[1] / 2) * 2,
-      ceiling(st22_delta_limits[2] / 2) * 2,
-      by = 2
-    )
-  ) +
-  labs(
-    title = "ST22 sediment accumulation relative to baseline",
-    subtitle = "Density of meter-level mean sediment-depth deltas by construction survey",
-    x = "Sediment-depth delta from meter-matched baseline (cm)",
-    y = "Density",
-    fill = "Delta range"
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    legend.position = "bottom",
-    plot.title.position = "plot"
-  )
-
-st22_density_plot
-```
-
-### Accumulation versus mirrored loss
-
-This view compares accumulation and loss at the same absolute magnitude. The
-solid curve is the density at positive deltas. The dashed curve reflects the
-negative tail onto the positive axis. Colored ribbons show only magnitudes at
-which accumulation density is greater than the density of equivalent sediment
-loss. Where the dashed curve is higher, loss is more prevalent and no colored
-ribbon is drawn.
-
-```{r st22-tail-balance-data}
-st22_max_absolute_delta <-
-  max(abs(st22_meter_deltas$sediment_delta_cm)) + 0.5
-
-st22_mirrored_density <- st22_meter_deltas %>%
-  group_by(date, survey, survey_n) %>%
-  group_modify(~ {
-    density_estimate <- density(
-      .x$sediment_delta_cm,
-      from = -st22_max_absolute_delta,
-      to = st22_max_absolute_delta,
-      n = 2049,
-      na.rm = TRUE
-    )
-
-    positive_magnitude <- density_estimate$x[
-      density_estimate$x >= 0
-    ]
-
-    tibble(
-      magnitude_cm = positive_magnitude,
-      accumulation_density = approx(
-        density_estimate$x,
-        density_estimate$y,
-        xout = positive_magnitude
-      )$y,
-      mirrored_loss_density = approx(
-        density_estimate$x,
-        density_estimate$y,
-        xout = -positive_magnitude
-      )$y
-    )
-  }) %>%
-  ungroup() %>%
-  mutate(
-    accumulation_exceeds_loss =
-      accumulation_density > mirrored_loss_density,
-    delta_band = case_when(
-      magnitude_cm >= 1 ~ ">= 1 cm",
-      magnitude_cm >= 0.5 ~ ">= 5 mm to < 1 cm",
-      magnitude_cm >= 0.15 ~ ">= 1.5 mm to < 5 mm",
-      TRUE ~ "< 1.5 mm"
-    ),
-    delta_band = factor(
-      delta_band,
-      levels = c(
-        ">= 1 cm",
-        ">= 5 mm to < 1 cm",
-        ">= 1.5 mm to < 5 mm",
-        "< 1.5 mm"
-      )
-    ),
-    excess_run = cumsum(
-      accumulation_exceeds_loss != lag(
-        accumulation_exceeds_loss,
-        default = first(accumulation_exceeds_loss)
-      ) |
-        delta_band != lag(delta_band, default = first(delta_band))
-    ),
-    survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
-    survey_label = fct_reorder(survey_label, survey_n),
-    .by = c(date, survey, survey_n)
-  )
-
-st22_mirrored_curves <- st22_mirrored_density %>%
-  select(
-    date,
-    survey,
-    survey_n,
-    survey_label,
-    magnitude_cm,
-    accumulation_density,
-    mirrored_loss_density
-  ) %>%
-  pivot_longer(
-    c(accumulation_density, mirrored_loss_density),
-    names_to = "curve",
-    values_to = "density"
-  ) %>%
-  mutate(
-    curve = recode(
-      curve,
-      accumulation_density = "Accumulation (+delta)",
-      mirrored_loss_density = "Mirrored loss (-delta)"
-    ),
-    curve = factor(
-      curve,
-      levels = c("Accumulation (+delta)", "Mirrored loss (-delta)")
-    )
-  )
-
-tail_balance_thresholds <- tribble(
-  ~threshold_cm, ~threshold_label,
-  0.15, "1.5 mm",
-  0.5, "5 mm",
-  1, "1 cm"
-)
-
-st22_weekly_tail_balance <- crossing(
-  st22_meter_deltas,
-  tail_balance_thresholds
-) %>%
-  summarize(
-    n_meter_positions = n(),
-    accumulation_fraction = mean(sediment_delta_cm >= threshold_cm),
-    loss_fraction = mean(sediment_delta_cm <= -threshold_cm),
-    tail_balance = accumulation_fraction - loss_fraction,
-    .by = c(
-      date,
-      survey,
-      survey_n,
-      threshold_cm,
-      threshold_label
-    )
-  ) %>%
-  arrange(survey_n, threshold_cm)
-```
-
-```{r st22-tail-balance-plot, fig.width=11, fig.height=15}
-st22_tail_balance_plot <- ggplot(
-  st22_mirrored_curves,
-  aes(x = magnitude_cm, y = density)
-) +
-  geom_ribbon(
-    data = st22_mirrored_density %>%
-      filter(accumulation_exceeds_loss),
-    aes(
-      x = magnitude_cm,
-      ymin = mirrored_loss_density,
-      ymax = accumulation_density,
-      fill = delta_band,
-      group = interaction(delta_band, excess_run)
-    ),
-    inherit.aes = FALSE,
-    alpha = 0.9
-  ) +
-  geom_line(
-    aes(color = curve, linetype = curve),
-    linewidth = 0.55
-  ) +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey55",
-    linewidth = 0.3,
-    linetype = "dotted"
-  ) +
-  facet_wrap(~ survey_label, ncol = 4) +
-  scale_fill_manual(
-    values = c(
-      ">= 1 cm" = "#d73027",
-      ">= 5 mm to < 1 cm" = "#f28e2b",
-      ">= 1.5 mm to < 5 mm" = "#ffd54f",
-      "< 1.5 mm" = "white"
-    ),
-    drop = FALSE
-  ) +
-  scale_color_manual(
-    values = c(
-      "Accumulation (+delta)" = "grey10",
-      "Mirrored loss (-delta)" = "#2c7fb8"
-    )
-  ) +
-  scale_linetype_manual(
-    values = c(
-      "Accumulation (+delta)" = "solid",
-      "Mirrored loss (-delta)" = "22"
-    )
-  ) +
-  scale_x_continuous(
-    breaks = seq(0, floor(st22_max_absolute_delta), by = 2),
-    expand = expansion(mult = c(0, 0.02))
-  ) +
-  labs(
-    title = "ST22 accumulation compared with equivalent sediment loss",
-    subtitle = paste(
-      "Colored area marks density where accumulation is more prevalent",
-      "than loss of the same magnitude"
-    ),
-    x = "Absolute sediment-depth change from baseline (cm)",
-    y = "Density",
-    fill = "Excess accumulation range",
-    color = NULL,
-    linetype = NULL
-  ) +
-  guides(
-    color = guide_legend(order = 1),
-    linetype = guide_legend(order = 1),
-    fill = guide_legend(order = 2)
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    legend.position = "bottom",
-    legend.box = "vertical",
-    plot.title.position = "plot"
-  )
-
-st22_tail_balance_plot
-```
-
-The table below reports the same comparison directly from the 51 observed
-meter positions. Tail balance is the fraction at or above the positive
-threshold minus the fraction at or below the equivalent negative threshold.
-Positive values indicate that accumulation is more prevalent than equivalent
-loss.
-
-```{r st22-tail-balance-table}
-st22_weekly_tail_balance %>%
-  select(
-    date,
-    survey,
-    survey_n,
-    threshold_label,
-    accumulation_fraction,
-    loss_fraction,
-    tail_balance
-  ) %>%
-  pivot_wider(
-    names_from = threshold_label,
-    values_from = c(
-      accumulation_fraction,
-      loss_fraction,
-      tail_balance
-    ),
-    names_glue = "{.value}_{threshold_label}"
-  ) %>%
-  arrange(survey_n)
-```
-
-## ST22 alternative Baseline-Con1-Con2 reference
+### Alternative Baseline-Con1-Con2 reference
 
 This sensitivity analysis defines a meter-specific alternative reference as
 the arithmetic mean of the Baseline, Con1, and Con2 meter means. Each survey
@@ -715,332 +376,71 @@ st22_alternative_deltas <- st22_raw %>%
   arrange(survey_n, meter)
 ```
 
-### Alternative-reference density distributions
+### Meter-position diagnostic
 
-```{r st22-alternative-density-data}
-st22_alternative_delta_limits <-
-  range(st22_alternative_deltas$alternative_delta_cm) + c(-0.5, 0.5)
+This heatmap provides a relatively raw view of sediment change before the
+transect is summarized with exceedance curves. It shows whether accumulation
+or loss is scattered among meter positions or forms spatially coherent patterns
+that persist through multiple surveys. Results use the Baseline-Con1-Con2
+alternative reference; outlined cells meet or exceed 1 cm accumulation.
 
-st22_alternative_density <- st22_alternative_deltas %>%
-  group_by(date, survey, survey_n) %>%
-  group_modify(~ {
-    density_estimate <- density(
-      .x$alternative_delta_cm,
-      from = st22_alternative_delta_limits[1],
-      to = st22_alternative_delta_limits[2],
-      n = 1024,
+```{r st22-meter-position-heatmap, fig.width=11, fig.height=7.5}
+st22_spatial_deltas <- st22_alternative_deltas %>%
+  mutate(
+    survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
+    survey_label = fct_reorder(survey_label, survey_n, .desc = TRUE)
+  )
+
+st22_spatial_color_limit <- max(
+  abs(
+    quantile(
+      st22_spatial_deltas$alternative_delta_cm,
+      probs = c(0.02, 0.98),
       na.rm = TRUE
     )
-
-    tibble(
-      sediment_delta_cm = density_estimate$x,
-      density = density_estimate$y
-    )
-  }) %>%
-  ungroup() %>%
-  mutate(
-    delta_band = case_when(
-      sediment_delta_cm >= 1 ~ ">= 1 cm",
-      sediment_delta_cm >= 0.5 ~ ">= 5 mm to < 1 cm",
-      sediment_delta_cm >= 0.15 ~ ">= 1.5 mm to < 5 mm",
-      TRUE ~ "< 1.5 mm"
-    ),
-    delta_band = factor(
-      delta_band,
-      levels = c(
-        ">= 1 cm",
-        ">= 5 mm to < 1 cm",
-        ">= 1.5 mm to < 5 mm",
-        "< 1.5 mm"
-      )
-    ),
-    survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
-    survey_label = fct_reorder(survey_label, survey_n)
   )
-```
+)
 
-```{r st22-alternative-density-plot, fig.width=11, fig.height=14}
-st22_alternative_density_plot <- ggplot(
-  st22_alternative_density,
-  aes(x = sediment_delta_cm, y = density)
+st22_meter_position_heatmap <- ggplot(
+  st22_spatial_deltas,
+  aes(x = meter, y = survey_label, fill = alternative_delta_cm)
 ) +
-  geom_area(
-    aes(fill = delta_band, group = delta_band),
-    color = NA,
-    alpha = 0.9
+  geom_tile() +
+  geom_point(
+    data = st22_spatial_deltas %>%
+      filter(alternative_delta_cm >= 1),
+    shape = 21,
+    fill = NA,
+    color = "#67001f",
+    size = 0.9,
+    stroke = 0.35
   ) +
-  geom_line(linewidth = 0.45, color = "grey15") +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey45",
-    linewidth = 0.3,
-    linetype = "dotted"
+  scale_fill_gradient2(
+    low = "#2166ac",
+    mid = "white",
+    high = "#b2182b",
+    midpoint = 0,
+    limits = c(-st22_spatial_color_limit, st22_spatial_color_limit),
+    oob = scales::squish
   ) +
-  facet_wrap(~ survey_label, ncol = 4) +
-  scale_fill_manual(
-    values = c(
-      ">= 1 cm" = "#d73027",
-      ">= 5 mm to < 1 cm" = "#f28e2b",
-      ">= 1.5 mm to < 5 mm" = "#ffd54f",
-      "< 1.5 mm" = "white"
-    ),
-    drop = FALSE
-  ) +
-  scale_x_continuous(
-    breaks = seq(
-      floor(st22_alternative_delta_limits[1] / 2) * 2,
-      ceiling(st22_alternative_delta_limits[2] / 2) * 2,
-      by = 2
-    )
-  ) +
+  scale_x_continuous(breaks = seq(0, 50, by = 5), expand = c(0, 0)) +
   labs(
-    title = "ST22 sediment accumulation using the alternative reference",
-    subtitle = "Reference is the meter-specific mean of Baseline, Con1, and Con2",
-    x = "Sediment-depth delta from alternative reference (cm)",
-    y = "Density",
-    fill = "Delta range"
+    title = "ST22 sediment change through time and along the transect",
+    subtitle = "Baseline-Con1-Con2 reference; outlined cells meet or exceed 1 cm accumulation",
+    x = "Meter position",
+    y = "Construction survey",
+    fill = "Sediment delta (cm)"
   ) +
   theme_minimal(base_size = 10) +
   theme(
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    legend.position = "bottom",
+    panel.grid = element_blank(),
     plot.title.position = "plot"
   )
 
-st22_alternative_density_plot
+st22_meter_position_heatmap
 ```
 
-### Alternative-reference accumulation versus mirrored loss
-
-```{r st22-alternative-tail-balance-data}
-st22_alternative_max_absolute_delta <-
-  max(abs(st22_alternative_deltas$alternative_delta_cm)) + 0.5
-
-st22_alternative_mirrored_density <- st22_alternative_deltas %>%
-  group_by(date, survey, survey_n) %>%
-  group_modify(~ {
-    density_estimate <- density(
-      .x$alternative_delta_cm,
-      from = -st22_alternative_max_absolute_delta,
-      to = st22_alternative_max_absolute_delta,
-      n = 2049,
-      na.rm = TRUE
-    )
-
-    positive_magnitude <- density_estimate$x[
-      density_estimate$x >= 0
-    ]
-
-    tibble(
-      magnitude_cm = positive_magnitude,
-      accumulation_density = approx(
-        density_estimate$x,
-        density_estimate$y,
-        xout = positive_magnitude
-      )$y,
-      mirrored_loss_density = approx(
-        density_estimate$x,
-        density_estimate$y,
-        xout = -positive_magnitude
-      )$y
-    )
-  }) %>%
-  ungroup() %>%
-  mutate(
-    accumulation_exceeds_loss =
-      accumulation_density > mirrored_loss_density,
-    delta_band = case_when(
-      magnitude_cm >= 1 ~ ">= 1 cm",
-      magnitude_cm >= 0.5 ~ ">= 5 mm to < 1 cm",
-      magnitude_cm >= 0.15 ~ ">= 1.5 mm to < 5 mm",
-      TRUE ~ "< 1.5 mm"
-    ),
-    delta_band = factor(
-      delta_band,
-      levels = c(
-        ">= 1 cm",
-        ">= 5 mm to < 1 cm",
-        ">= 1.5 mm to < 5 mm",
-        "< 1.5 mm"
-      )
-    ),
-    excess_run = cumsum(
-      accumulation_exceeds_loss != lag(
-        accumulation_exceeds_loss,
-        default = first(accumulation_exceeds_loss)
-      ) |
-        delta_band != lag(delta_band, default = first(delta_band))
-    ),
-    survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
-    survey_label = fct_reorder(survey_label, survey_n),
-    .by = c(date, survey, survey_n)
-  )
-
-st22_alternative_mirrored_curves <- st22_alternative_mirrored_density %>%
-  select(
-    date,
-    survey,
-    survey_n,
-    survey_label,
-    magnitude_cm,
-    accumulation_density,
-    mirrored_loss_density
-  ) %>%
-  pivot_longer(
-    c(accumulation_density, mirrored_loss_density),
-    names_to = "curve",
-    values_to = "density"
-  ) %>%
-  mutate(
-    curve = recode(
-      curve,
-      accumulation_density = "Accumulation (+delta)",
-      mirrored_loss_density = "Mirrored loss (-delta)"
-    ),
-    curve = factor(
-      curve,
-      levels = c("Accumulation (+delta)", "Mirrored loss (-delta)")
-    )
-  )
-```
-
-```{r st22-alternative-tail-balance-plot, fig.width=11, fig.height=15}
-st22_alternative_tail_balance_plot <- ggplot(
-  st22_alternative_mirrored_curves,
-  aes(x = magnitude_cm, y = density)
-) +
-  geom_ribbon(
-    data = st22_alternative_mirrored_density %>%
-      filter(accumulation_exceeds_loss),
-    aes(
-      x = magnitude_cm,
-      ymin = mirrored_loss_density,
-      ymax = accumulation_density,
-      fill = delta_band,
-      group = interaction(delta_band, excess_run)
-    ),
-    inherit.aes = FALSE,
-    alpha = 0.9
-  ) +
-  geom_line(
-    aes(color = curve, linetype = curve),
-    linewidth = 0.55
-  ) +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey55",
-    linewidth = 0.3,
-    linetype = "dotted"
-  ) +
-  facet_wrap(~ survey_label, ncol = 4) +
-  scale_fill_manual(
-    values = c(
-      ">= 1 cm" = "#d73027",
-      ">= 5 mm to < 1 cm" = "#f28e2b",
-      ">= 1.5 mm to < 5 mm" = "#ffd54f",
-      "< 1.5 mm" = "white"
-    ),
-    drop = FALSE
-  ) +
-  scale_color_manual(
-    values = c(
-      "Accumulation (+delta)" = "grey10",
-      "Mirrored loss (-delta)" = "#2c7fb8"
-    )
-  ) +
-  scale_linetype_manual(
-    values = c(
-      "Accumulation (+delta)" = "solid",
-      "Mirrored loss (-delta)" = "22"
-    )
-  ) +
-  scale_x_continuous(
-    breaks = seq(0, floor(st22_alternative_max_absolute_delta), by = 2),
-    expand = expansion(mult = c(0, 0.02))
-  ) +
-  labs(
-    title = "ST22 tail balance using the alternative reference",
-    subtitle = "Reference is the meter-specific mean of Baseline, Con1, and Con2",
-    x = "Absolute sediment-depth change from alternative reference (cm)",
-    y = "Density",
-    fill = "Excess accumulation range",
-    color = NULL,
-    linetype = NULL
-  ) +
-  guides(
-    color = guide_legend(order = 1),
-    linetype = guide_legend(order = 1),
-    fill = guide_legend(order = 2)
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    legend.position = "bottom",
-    legend.box = "vertical",
-    plot.title.position = "plot",
-    plot.title = element_text(margin = margin(b = 4)),
-    plot.subtitle = element_text(margin = margin(b = 8))
-  )
-
-st22_alternative_tail_balance_plot
-```
-
-### Reference comparison
-
-```{r st22-reference-comparison}
-st22_reference_comparison <- st22_alternative_deltas %>%
-  select(
-    date,
-    survey,
-    survey_n,
-    meter,
-    official_delta_cm,
-    alternative_delta_cm
-  ) %>%
-  pivot_longer(
-    c(official_delta_cm, alternative_delta_cm),
-    names_to = "reference",
-    values_to = "sediment_delta_cm"
-  ) %>%
-  mutate(
-    reference = recode(
-      reference,
-      official_delta_cm = "Official baseline",
-      alternative_delta_cm = "Baseline-Con1-Con2 average"
-    )
-  ) %>%
-  crossing(tail_balance_thresholds) %>%
-  summarize(
-    n_meter_positions = n(),
-    n_accumulation_exceedances =
-      sum(sediment_delta_cm >= threshold_cm),
-    pct_accumulation_exceedances =
-      mean(sediment_delta_cm >= threshold_cm),
-    n_equivalent_losses =
-      sum(sediment_delta_cm <= -threshold_cm),
-    pct_equivalent_losses =
-      mean(sediment_delta_cm <= -threshold_cm),
-    tail_balance =
-      pct_accumulation_exceedances - pct_equivalent_losses,
-    .by = c(
-      date,
-      survey,
-      survey_n,
-      reference,
-      threshold_cm,
-      threshold_label
-    )
-  ) %>%
-  arrange(survey_n, threshold_cm, reference)
-
-st22_reference_comparison
-```
-
-## ST22 tail-balance visualization comparison
+### Empirical tail-balance analysis
 
 The following views use empirical exceedance fractions rather than smoothed
 density estimates. At magnitude \(t\), accumulation exceedance is the fraction
@@ -1109,500 +509,52 @@ st22_empirical_tail_profiles <- crossing(
       threshold_cm
     )
   ) %>%
-  arrange(reference, survey_n, threshold_cm) %>%
-  mutate(
-    balance_direction = case_when(
-      tail_balance > 0 ~ "Accumulation exceeds loss",
-      tail_balance < 0 ~ "Loss exceeds accumulation",
-      TRUE ~ "Balanced"
-    ),
-    balance_direction = factor(
-      balance_direction,
-      levels = c(
-        "Accumulation exceeds loss",
-        "Loss exceeds accumulation",
-        "Balanced"
-      )
-    ),
-    direction_run = cumsum(
-      balance_direction != lag(
-        balance_direction,
-        default = first(balance_direction)
-      )
-    ),
-    .by = c(reference, survey_n)
-  )
-```
+  arrange(reference, survey_n, threshold_cm)
 
-### Empirical exceedance curves
-
-```{r st22-exceedance-curves, fig.width=11, fig.height=15}
 st22_alternative_exceedance_profiles <- st22_empirical_tail_profiles %>%
   filter(reference == "Baseline-Con1-Con2 average")
 
-st22_alternative_exceedance_curves <-
-  st22_alternative_exceedance_profiles %>%
-  select(
-    date,
-    survey,
-    survey_n,
-    survey_label,
-    threshold_cm,
-    accumulation_fraction,
-    loss_fraction
-  ) %>%
-  pivot_longer(
-    c(accumulation_fraction, loss_fraction),
-    names_to = "tail",
-    values_to = "fraction"
-  ) %>%
-  mutate(
-    tail = recode(
-      tail,
-      accumulation_fraction = "Accumulation",
-      loss_fraction = "Equivalent loss"
-    ),
-    tail = factor(tail, levels = c("Accumulation", "Equivalent loss"))
-  )
+tail_plot_max_cm <- ceiling(
+  2 * max(abs(st22_alternative_deltas$alternative_delta_cm))
+) / 2
 
-st22_exceedance_curve_plot <- ggplot(
-  st22_alternative_exceedance_curves,
-  aes(x = threshold_cm, y = fraction)
-) +
-  geom_ribbon(
-    data = st22_alternative_exceedance_profiles %>%
-      filter(balance_direction != "Balanced"),
-    aes(
-      x = threshold_cm,
-      ymin = pmin(accumulation_fraction, loss_fraction),
-      ymax = pmax(accumulation_fraction, loss_fraction),
-      fill = balance_direction,
-      group = interaction(survey_n, direction_run)
-    ),
-    inherit.aes = FALSE,
-    alpha = 0.55
-  ) +
-  geom_step(
-    aes(color = tail, linetype = tail),
-    linewidth = 0.55,
-    direction = "hv"
-  ) +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey45",
-    linewidth = 0.3,
-    linetype = "dotted"
-  ) +
-  facet_wrap(~ survey_label, ncol = 4) +
-  scale_x_continuous(
-    limits = c(0, tail_profile_max_cm),
-    breaks = seq(0, tail_profile_max_cm, by = 2),
-    expand = expansion(mult = c(0, 0.01))
-  ) +
-  scale_y_continuous(
-    labels = scales::label_percent(accuracy = 1),
-    limits = c(0, 1),
-    expand = expansion(mult = c(0, 0.02))
-  ) +
-  scale_color_manual(
-    values = c("Accumulation" = "#b2182b", "Equivalent loss" = "#2166ac")
-  ) +
-  scale_linetype_manual(
-    values = c("Accumulation" = "solid", "Equivalent loss" = "22")
-  ) +
-  scale_fill_manual(
-    values = c(
-      "Accumulation exceeds loss" = "#ef8a62",
-      "Loss exceeds accumulation" = "#67a9cf"
-    )
-  ) +
-  labs(
-    title = "ST22 empirical accumulation and loss exceedance curves",
-    subtitle = "Baseline-Con1-Con2 alternative reference",
-    x = "Absolute sediment-depth change threshold (cm)",
-    y = "Meter positions exceeding threshold",
-    color = NULL,
-    linetype = NULL,
-    fill = "Tail balance"
-  ) +
-  guides(
-    color = guide_legend(order = 1),
-    linetype = guide_legend(order = 1),
-    fill = guide_legend(order = 2)
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    legend.position = "bottom",
-    legend.box = "vertical",
-    plot.title.position = "plot"
-  )
+tail_plot_breaks_cm <- sort(unique(c(
+  seq(0, floor(tail_plot_max_cm), by = 1),
+  tail_plot_max_cm
+)))
 
-st22_exceedance_curve_plot
-```
-
-### Net accumulation-exceedance curves
-
-This is the direct difference between the two curves above. At each sediment-
-change threshold, the curve is the percentage of meter positions exceeding the
-threshold through accumulation minus the percentage exceeding the same
-threshold through loss. Positive values indicate excess accumulation, negative
-values indicate excess loss, and zero indicates equal prevalence. The view is
-limited to 3 cm so that the regulatory thresholds and the main body of the
-empirical distributions remain legible.
-
-```{r st22-net-exceedance-curves, fig.width=11, fig.height=15}
 st22_net_exceedance_profiles <- st22_alternative_exceedance_profiles %>%
-  filter(threshold_cm <= 3)
+  filter(threshold_cm <= tail_plot_max_cm)
 
-st22_net_exceedance_curve_plot <- ggplot(
-  st22_net_exceedance_profiles,
-  aes(x = threshold_cm, y = tail_balance)
-) +
-  geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
-  geom_ribbon(
-    aes(
-      ymin = pmin(tail_balance, 0),
-      ymax = pmax(tail_balance, 0),
-      fill = balance_direction,
-      group = interaction(survey_n, direction_run)
-    ),
-    alpha = 0.7
-  ) +
-  geom_step(
-    color = "grey15",
-    linewidth = 0.55,
-    direction = "hv"
-  ) +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey45",
-    linewidth = 0.3,
-    linetype = "dotted"
-  ) +
-  facet_wrap(~ survey_label, ncol = 4) +
-  scale_x_continuous(
-    limits = c(0, 3),
-    breaks = 0:3,
-    expand = expansion(mult = c(0, 0.01))
-  ) +
-  scale_y_continuous(
-    labels = scales::label_percent(accuracy = 1),
-    limits = c(-1, 1),
-    breaks = seq(-1, 1, by = 0.25),
-    expand = expansion(mult = c(0.01, 0.01))
-  ) +
-  scale_fill_manual(
-    values = c(
-      "Accumulation exceeds loss" = "#d6604d",
-      "Loss exceeds accumulation" = "#4393c3",
-      "Balanced" = "grey80"
-    ),
-    drop = TRUE
-  ) +
-  labs(
-    title = "ST22 net accumulation exceedance",
-    subtitle = paste(
-      "Baseline-Con1-Con2 alternative reference; positive = accumulation",
-      "exceeds equivalent loss"
-    ),
-    x = "Absolute sediment-depth change threshold (cm)",
-    y = "Accumulation minus loss prevalence",
-    fill = NULL
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    legend.position = "bottom",
-    plot.title.position = "plot"
-  )
-
-st22_net_exceedance_curve_plot
-```
-
-### Smoothed cumulative net exceedance
-
-This experimental view estimates a kernel density for each survey and then
-integrates its two tails. At threshold (t), the smooth curve is the estimated
-(P(\Delta \ge t) - P(\Delta \le -t)); it is not a comparison of the density
-heights at (+t) and (-t). The larger points retain the unsmoothed empirical
-results at the three regulatory thresholds.
-
-```{r st22-smoothed-net-exceedance-data}
-smooth_tail_profile <- function(delta, thresholds = seq(0, 3, by = 0.01)) {
-  kernel <- density(delta, bw = "nrd0", n = 4096, cut = 4)
-  interval_area <- diff(kernel$x) *
-    (head(kernel$y, -1) + tail(kernel$y, -1)) / 2
-  kernel_cdf <- c(0, cumsum(interval_area))
-  kernel_cdf <- kernel_cdf / max(kernel_cdf)
-  cdf_at <- approxfun(
-    kernel$x,
-    kernel_cdf,
-    yleft = 0,
-    yright = 1
-  )
-
-  tibble(
-    threshold_cm = thresholds,
-    smoothed_accumulation_fraction = 1 - cdf_at(thresholds),
-    smoothed_loss_fraction = cdf_at(-thresholds),
-    smoothed_tail_balance =
-      smoothed_accumulation_fraction - smoothed_loss_fraction
-  )
-}
-
-st22_smoothed_net_profiles <- st22_alternative_deltas %>%
-  group_by(date, survey, survey_n) %>%
-  group_modify(~ smooth_tail_profile(.x$alternative_delta_cm)) %>%
-  ungroup() %>%
+st22_weekly_mean_delta <- st22_alternative_deltas %>%
+  summarize(
+    mean_delta_cm = mean(alternative_delta_cm),
+    n_meter_positions = n(),
+    .by = c(date, survey, survey_n)
+  ) %>%
   mutate(
     survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
     survey_label = fct_reorder(survey_label, survey_n),
-    balance_direction = if_else(
-      smoothed_tail_balance >= 0,
-      "Accumulation exceeds loss",
-      "Loss exceeds accumulation"
-    ),
-    direction_run = cumsum(
-      balance_direction != lag(
-        balance_direction,
-        default = first(balance_direction)
-      )
-    ),
-    .by = survey_n
-  )
-
-st22_empirical_regulatory_points <-
-  st22_alternative_exceedance_profiles %>%
-  filter(threshold_cm %in% c(0.15, 0.5, 1))
-```
-
-```{r st22-smoothed-net-exceedance-plot, fig.width=11, fig.height=15}
-st22_smoothed_net_exceedance_plot <- ggplot(
-  st22_smoothed_net_profiles,
-  aes(x = threshold_cm, y = smoothed_tail_balance)
-) +
-  geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
-  geom_ribbon(
-    aes(
-      ymin = pmin(smoothed_tail_balance, 0),
-      ymax = pmax(smoothed_tail_balance, 0),
-      fill = balance_direction,
-      group = interaction(survey_n, direction_run)
-    ),
-    alpha = 0.65
-  ) +
-  geom_line(color = "grey15", linewidth = 0.65) +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey45",
-    linewidth = 0.3,
-    linetype = "dotted"
-  ) +
-  geom_point(
-    data = st22_empirical_regulatory_points,
-    aes(
-      x = threshold_cm,
-      y = tail_balance,
-      fill = balance_direction
-    ),
-    inherit.aes = FALSE,
-    shape = 21,
-    color = "grey10",
-    stroke = 0.45,
-    size = 2.2
-  ) +
-  facet_wrap(~ survey_label, ncol = 4) +
-  scale_x_continuous(
-    limits = c(0, 3),
-    breaks = 0:3,
-    expand = expansion(mult = c(0, 0.01))
-  ) +
-  scale_y_continuous(
-    labels = scales::label_percent(accuracy = 1),
-    limits = c(-1, 1),
-    breaks = seq(-1, 1, by = 0.25),
-    expand = expansion(mult = c(0.01, 0.01))
-  ) +
-  scale_fill_manual(
-    values = c(
-      "Accumulation exceeds loss" = "#d6604d",
-      "Loss exceeds accumulation" = "#4393c3"
+    mean_absolute_delta_cm = abs(mean_delta_cm),
+    mean_direction = if_else(
+      mean_delta_cm >= 0,
+      "Positive transect mean",
+      "Negative transect mean"
     )
-  ) +
-  labs(
-    title = "ST22 smoothed cumulative net exceedance",
-    subtitle = paste(
-      "Kernel-density tail balance; outlined points are unsmoothed values at",
-      "1.5 mm, 5 mm, and 1 cm"
-    ),
-    x = "Absolute sediment-depth change threshold (cm)",
-    y = "Estimated accumulation minus loss prevalence",
-    fill = NULL
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    legend.position = "bottom",
-    plot.title.position = "plot"
-  )
-
-st22_smoothed_net_exceedance_plot
-```
-
-### Mirrored cumulative accumulation and loss
-
-This view shows the two cumulative tail prevalences directly rather than their
-difference. The red curve above zero is the estimated fraction accumulating at
-least the threshold amount. The blue curve below zero is the estimated fraction
-losing at least the same amount. Distance from zero is therefore an actual
-prevalence, and both sides contract toward zero as the threshold increases.
-Outlined points show the corresponding unsmoothed empirical fractions at the
-three regulatory thresholds.
-
-```{r st22-mirrored-cumulative-data}
-st22_smoothed_mirrored_profiles <- st22_smoothed_net_profiles %>%
-  select(
-    date,
-    survey,
-    survey_n,
-    survey_label,
-    threshold_cm,
-    smoothed_accumulation_fraction,
-    smoothed_loss_fraction
-  ) %>%
-  pivot_longer(
-    c(smoothed_accumulation_fraction, smoothed_loss_fraction),
-    names_to = "tail",
-    values_to = "fraction"
-  ) %>%
-  mutate(
-    tail = recode(
-      tail,
-      smoothed_accumulation_fraction = "Accumulation",
-      smoothed_loss_fraction = "Equivalent loss"
-    ),
-    tail = factor(tail, levels = c("Accumulation", "Equivalent loss")),
-    signed_fraction = if_else(tail == "Accumulation", fraction, -fraction)
-  )
-
-st22_empirical_mirrored_points <- st22_empirical_regulatory_points %>%
-  select(
-    date,
-    survey,
-    survey_n,
-    survey_label,
-    threshold_cm,
-    accumulation_fraction,
-    loss_fraction
-  ) %>%
-  pivot_longer(
-    c(accumulation_fraction, loss_fraction),
-    names_to = "tail",
-    values_to = "fraction"
-  ) %>%
-  mutate(
-    tail = recode(
-      tail,
-      accumulation_fraction = "Accumulation",
-      loss_fraction = "Equivalent loss"
-    ),
-    tail = factor(tail, levels = c("Accumulation", "Equivalent loss")),
-    signed_fraction = if_else(tail == "Accumulation", fraction, -fraction)
   )
 ```
 
-```{r st22-mirrored-cumulative-plot, fig.width=11, fig.height=15}
-st22_mirrored_cumulative_plot <- ggplot(
-  st22_smoothed_mirrored_profiles,
-  aes(
-    x = threshold_cm,
-    y = signed_fraction,
-    color = tail,
-    fill = tail,
-    group = tail
-  )
-) +
-  geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
-  geom_area(alpha = 0.4, position = "identity") +
-  geom_line(linewidth = 0.7) +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey45",
-    linewidth = 0.3,
-    linetype = "dotted"
-  ) +
-  geom_point(
-    data = st22_empirical_mirrored_points,
-    aes(
-      x = threshold_cm,
-      y = signed_fraction,
-      color = tail,
-      fill = tail
-    ),
-    inherit.aes = FALSE,
-    shape = 21,
-    stroke = 0.5,
-    size = 2.2
-  ) +
-  facet_wrap(~ survey_label, ncol = 4) +
-  scale_x_continuous(
-    limits = c(0, 3),
-    breaks = 0:3,
-    expand = expansion(mult = c(0, 0.01))
-  ) +
-  scale_y_continuous(
-    labels = ~ scales::percent(abs(.x), accuracy = 1),
-    limits = c(-1, 1),
-    breaks = seq(-1, 1, by = 0.25),
-    expand = expansion(mult = c(0.01, 0.01))
-  ) +
-  scale_color_manual(
-    values = c("Accumulation" = "#b2182b", "Equivalent loss" = "#2166ac")
-  ) +
-  scale_fill_manual(
-    values = c("Accumulation" = "#d6604d", "Equivalent loss" = "#4393c3")
-  ) +
-  labs(
-    title = "ST22 mirrored cumulative accumulation and loss",
-    subtitle = paste(
-      "Distance from zero is the prevalence at that threshold or greater;",
-      "outlined points are empirical values"
-    ),
-    x = "Absolute sediment-depth change threshold (cm)",
-    y = "Meter positions at threshold or greater",
-    color = NULL,
-    fill = NULL
-  ) +
-  guides(fill = "none") +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    legend.position = "bottom",
-    plot.title.position = "plot"
-  )
-
-st22_mirrored_cumulative_plot
-```
-
-### Mirrored empirical curves with net balance
+#### Mirrored empirical curves with net balance
 
 The red and blue curves remain the actual empirical accumulation and loss
 prevalences. The black curve overlays their difference: accumulation prevalence
-minus equivalent-loss prevalence.
+minus equivalent-loss prevalence. The shared x-axis extends through the full
+observed alternative-reference change range, rounded up to the next 0.5 cm.
 
 ```{r st22-mirrored-empirical-with-net, fig.width=11, fig.height=15}
 st22_empirical_mirrored_profiles <-
   st22_alternative_exceedance_profiles %>%
-  filter(threshold_cm <= 3) %>%
+  filter(threshold_cm <= tail_plot_max_cm) %>%
   select(
     date,
     survey,
@@ -1625,7 +577,7 @@ st22_empirical_mirrored_profiles <-
     ),
     tail = factor(tail, levels = c("Accumulation", "Equivalent loss")),
     signed_fraction = if_else(tail == "Accumulation", fraction, -fraction),
-    threshold_end = lead(threshold_cm, default = 3),
+    threshold_end = lead(threshold_cm, default = tail_plot_max_cm),
     .by = c(survey_n, tail)
   )
 
@@ -1673,23 +625,31 @@ st22_mirrored_empirical_net_plot <- ggplot() +
     linewidth = 0.3,
     linetype = "dotted"
   ) +
+  geom_vline(
+    data = st22_weekly_mean_delta,
+    aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+    linewidth = 0.75,
+    linetype = "longdash"
+  ) +
   facet_wrap(~ survey_label, ncol = 4) +
   scale_x_continuous(
-    limits = c(0, 3),
-    breaks = 0:3,
+    limits = c(0, tail_plot_max_cm),
+    breaks = tail_plot_breaks_cm,
     expand = expansion(mult = c(0, 0.01))
   ) +
   scale_y_continuous(
     labels = ~ scales::percent(abs(.x), accuracy = 1),
-    limits = c(-1, 1),
-    breaks = seq(-1, 1, by = 0.25),
+    breaks = seq(-0.75, 0.75, by = 0.25),
     expand = expansion(mult = c(0.01, 0.01))
   ) +
+  coord_cartesian(ylim = c(-0.75, 0.75)) +
   scale_color_manual(
     values = c(
       "Accumulation" = "#b2182b",
       "Equivalent loss" = "#2166ac",
-      "Net balance" = "#1a1a1a"
+      "Net balance" = "#1a1a1a",
+      "Positive transect mean" = "#7f0000",
+      "Negative transect mean" = "#084594"
     )
   ) +
   scale_fill_manual(
@@ -1716,7 +676,7 @@ st22_mirrored_empirical_net_plot <- ggplot() +
 st22_mirrored_empirical_net_plot
 ```
 
-### Animated empirical curves with maximum-net memory
+#### Animated empirical curves with maximum-net memory
 
 The red, blue, and black curves show the current survey. At each absolute
 sediment-depth threshold, the dashed green curve records the largest signed net
@@ -1727,6 +687,16 @@ so far.
 ```{r st22-animated-empirical-data}
 st22_animation_frames <- st22_net_exceedance_profiles %>%
   distinct(survey_n, survey_label) %>%
+  left_join(
+    st22_weekly_mean_delta %>%
+      select(
+        survey_n,
+        mean_delta_cm,
+        mean_absolute_delta_cm,
+        mean_direction
+      ),
+    by = "survey_n"
+  ) %>%
   arrange(survey_n) %>%
   mutate(
     frame_label = paste0(
@@ -1822,23 +792,31 @@ make_st22_empirical_frame <- function(frame_survey_n) {
       linewidth = 0.4,
       linetype = "dotted"
     ) +
+    geom_vline(
+      data = frame_info,
+      aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+      linewidth = 0.9,
+      linetype = "longdash"
+    ) +
     scale_x_continuous(
-      limits = c(0, 3),
-      breaks = seq(0, 3, by = 0.5),
+      limits = c(0, tail_plot_max_cm),
+      breaks = tail_plot_breaks_cm,
       expand = expansion(mult = c(0, 0.01))
     ) +
     scale_y_continuous(
       labels = ~ scales::percent(abs(.x), accuracy = 1),
-      limits = c(-1, 1),
-      breaks = seq(-1, 1, by = 0.2),
+      breaks = seq(-0.75, 0.75, by = 0.25),
       expand = expansion(mult = c(0.01, 0.01))
     ) +
+    coord_cartesian(ylim = c(-0.75, 0.75)) +
     scale_color_manual(
       values = c(
         "Accumulation" = "#b2182b",
         "Equivalent loss" = "#2166ac",
         "Current net balance" = "#1a1a1a",
-        "Maximum net to date" = "#1b7837"
+        "Maximum net to date" = "#1b7837",
+        "Positive transect mean" = "#7f0000",
+        "Negative transect mean" = "#084594"
       )
     ) +
     scale_fill_manual(
@@ -1846,10 +824,7 @@ make_st22_empirical_frame <- function(frame_survey_n) {
     ) +
     labs(
       title = paste0("ST22 empirical cumulative tails: ", frame_info$frame_label),
-      subtitle = paste(
-        "Dashed green line remembers the maximum net balance reached at each",
-        "threshold"
-      ),
+      subtitle = "Dashed green line remembers the maximum net balance reached at each threshold",
       x = "Absolute sediment-depth change threshold (cm)",
       y = "Meter positions at threshold or greater",
       color = NULL,
@@ -1859,8 +834,14 @@ make_st22_empirical_frame <- function(frame_survey_n) {
       fill = "none",
       color = guide_legend(
         override.aes = list(
-          linetype = c("solid", "solid", "solid", "longdash"),
-          linewidth = c(1, 1, 1, 1.1)
+          linetype = c(
+            "solid",
+            "solid",
+            "solid",
+            "longdash",
+            "longdash"
+          ),
+          linewidth = c(1, 1, 1, 1.1, 0.9)
         )
       )
     ) +
@@ -1916,6 +897,9 @@ st22_final_frame_label <- st22_animation_frames %>%
   filter(survey_n == st22_final_survey_n) %>%
   pull(frame_label) %>%
   as.character()
+st22_final_mean_delta <- st22_animation_frames %>%
+  filter(survey_n == st22_final_survey_n) %>%
+  select(mean_delta_cm, mean_absolute_delta_cm, mean_direction)
 
 st22_final_summary_plot <- ggplot() +
   geom_hline(yintercept = 0, color = "grey35", linewidth = 0.45) +
@@ -1942,29 +926,34 @@ st22_final_summary_plot <- ggplot() +
     linewidth = 0.4,
     linetype = "dotted"
   ) +
+  geom_vline(
+    data = st22_final_mean_delta,
+    aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+    linewidth = 0.9,
+    linetype = "longdash"
+  ) +
   scale_x_continuous(
-    limits = c(0, 3),
-    breaks = seq(0, 3, by = 0.5),
+    limits = c(0, tail_plot_max_cm),
+    breaks = tail_plot_breaks_cm,
     expand = expansion(mult = c(0, 0.01))
   ) +
   scale_y_continuous(
     labels = scales::label_percent(accuracy = 1),
-    limits = c(-1, 1),
-    breaks = seq(-1, 1, by = 0.2),
+    breaks = seq(-0.75, 0.75, by = 0.25),
     expand = expansion(mult = c(0.01, 0.01))
   ) +
+  coord_cartesian(ylim = c(-0.75, 0.75)) +
   scale_color_manual(
     values = c(
       "Most recent net balance" = "#1a1a1a",
-      "Maximum net over monitoring period" = "#1b7837"
+      "Maximum net over monitoring period" = "#1b7837",
+      "Positive transect mean" = "#7f0000",
+      "Negative transect mean" = "#084594"
     )
   ) +
   labs(
     title = paste0("ST22 net-balance summary: ", st22_final_frame_label),
-    subtitle = paste(
-      "Black is the most recent net balance; dashed green is the maximum",
-      "observed at each threshold"
-    ),
+    subtitle = "Black is the most recent net balance; dashed green is the maximum observed at each threshold",
     x = "Absolute sediment-depth change threshold (cm)",
     y = "Accumulation minus equivalent-loss prevalence",
     color = NULL
@@ -1990,15 +979,6 @@ ggsave(
   units = "in",
   dpi = 96,
   bg = "white"
-)
-
-knitr::include_graphics(
-  normalizePath(
-    st22_frame_files$frame_file[
-      c(1, ceiling(nrow(st22_frame_files) / 2), nrow(st22_frame_files))
-    ]
-  ),
-  rel_path = FALSE
 )
 ```
 
@@ -2081,200 +1061,576 @@ st22_player_html <- gsub(">[[:space:]]+<", "><", st22_player_html)
 cat(st22_player_html)
 ```
 
-```{r st22-animated-empirical-plot, fig.width=10, fig.height=7, eval=FALSE}
-st22_animated_empirical_plot <- ggplot() +
-  geom_hline(yintercept = 0, color = "grey35", linewidth = 0.45) +
-  geom_area(
-    data = st22_animation_tails,
-    aes(
-      x = threshold_cm,
-      y = signed_fraction,
-      fill = tail,
-      group = tail
+#### Stacked net contributions by sediment-change band
+
+This view decomposes cumulative net exceedance into three mutually exclusive
+magnitude bands. The `1 cm+` segment is the net balance at 1 cm or greater; the
+two lighter segments are the additional net contributions between successive
+thresholds. The signed segment values sum to the cumulative net balance at
+1.5 mm or greater.
+
+```{r st22-stacked-net-threshold-contributions, fig.width=12, fig.height=8}
+st22_cumulative_net_thresholds <-
+  st22_alternative_exceedance_profiles %>%
+  mutate(threshold_key_cm = round(threshold_cm, 2)) %>%
+  filter(threshold_key_cm %in% c(0.15, 0.5, 1)) %>%
+  mutate(
+    survey_timepoint = factor(
+      survey,
+      levels = survey[order(survey_n)] %>% unique()
+    )
+  )
+
+st22_stacked_net_wide <- st22_cumulative_net_thresholds %>%
+  mutate(
+    threshold_code = recode(
+      as.character(threshold_key_cm),
+      `0.15` = "net_1_5mm",
+      `0.5` = "net_5mm",
+      `1` = "net_1cm"
+    )
+  ) %>%
+  select(
+    date,
+    survey,
+    survey_n,
+    survey_timepoint,
+    threshold_code,
+    tail_balance
+  ) %>%
+  pivot_wider(names_from = threshold_code, values_from = tail_balance) %>%
+  mutate(
+    `1 cm+` = net_1cm,
+    `5 mm to <1 cm` = net_5mm - net_1cm,
+    `1.5 mm to <5 mm` = net_1_5mm - net_5mm,
+    total_net_1_5mm = net_1_5mm
+  )
+
+st22_stacked_net_contributions <- st22_stacked_net_wide %>%
+  pivot_longer(
+    c(`1 cm+`, `5 mm to <1 cm`, `1.5 mm to <5 mm`),
+    names_to = "magnitude_band",
+    values_to = "net_contribution"
+  ) %>%
+  mutate(
+    magnitude_band = factor(
+      magnitude_band,
+      levels = c("1 cm+", "5 mm to <1 cm", "1.5 mm to <5 mm")
     ),
-    alpha = 0.4,
-    position = "identity"
-  ) +
-  geom_step(
-    data = st22_animation_tails,
-    aes(
-      x = threshold_cm,
-      y = signed_fraction,
-      color = tail,
-      group = tail
-    ),
-    linewidth = 0.9,
-    direction = "hv"
-  ) +
-  geom_step(
-    data = st22_animation_net,
-    aes(x = threshold_cm, y = tail_balance),
-    color = "white",
-    linewidth = 2,
-    direction = "hv"
-  ) +
-  geom_step(
-    data = st22_animation_net,
-    aes(x = threshold_cm, y = tail_balance, color = "Current net balance"),
-    linewidth = 1,
-    direction = "hv"
-  ) +
-  geom_step(
-    data = st22_animation_max_net,
-    aes(x = threshold_cm, y = maximum_net_to_date),
-    color = "white",
-    linewidth = 2.2,
-    direction = "hv"
-  ) +
-  geom_step(
-    data = st22_animation_max_net,
-    aes(
-      x = threshold_cm,
-      y = maximum_net_to_date,
-      color = "Maximum net to date"
-    ),
-    linewidth = 1.1,
-    linetype = "longdash",
-    direction = "hv"
-  ) +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey45",
-    linewidth = 0.4,
-    linetype = "dotted"
-  ) +
-  scale_x_continuous(
-    limits = c(0, 3),
-    breaks = seq(0, 3, by = 0.5),
-    expand = expansion(mult = c(0, 0.01))
+    contribution_direction = factor(
+      if_else(net_contribution >= 0, "Accumulation", "Loss"),
+      levels = c("Accumulation", "Loss")
+    )
+  )
+
+st22_stacked_identity_check <- st22_stacked_net_contributions %>%
+  summarize(
+    reconstructed_total = sum(net_contribution),
+    expected_total = first(total_net_1_5mm),
+    .by = survey_n
+  )
+
+stopifnot(all(
+  near(
+    st22_stacked_identity_check$reconstructed_total,
+    st22_stacked_identity_check$expected_total
+  )
+))
+
+st22_stacked_net_threshold_plot <- ggplot(
+  st22_stacked_net_contributions,
+  aes(
+    x = survey_timepoint,
+    y = net_contribution,
+    fill = contribution_direction,
+    alpha = magnitude_band,
+    group = magnitude_band
+  )
+) +
+  geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
+  geom_col(
+    width = 0.75,
+    position = position_stack(reverse = TRUE)
   ) +
   scale_y_continuous(
-    labels = ~ scales::percent(abs(.x), accuracy = 1),
-    limits = c(-1, 1),
-    breaks = seq(-1, 1, by = 0.2),
-    expand = expansion(mult = c(0.01, 0.01))
-  ) +
-  scale_color_manual(
-    values = c(
-      "Accumulation" = "#b2182b",
-      "Equivalent loss" = "#2166ac",
-      "Current net balance" = "#1a1a1a",
-      "Maximum net to date" = "#1b7837"
-    )
+    labels = scales::label_percent(accuracy = 1),
+    limits = c(-0.75, 0.75),
+    breaks = seq(-0.75, 0.75, by = 0.25),
+    expand = expansion(mult = c(0.03, 0.03))
   ) +
   scale_fill_manual(
-    values = c("Accumulation" = "#d6604d", "Equivalent loss" = "#4393c3")
+    values = c("Accumulation" = "#b2182b", "Loss" = "#2166ac")
   ) +
-  labs(
-    title = "ST22 empirical cumulative tails: {current_frame}",
-    subtitle = paste(
-      "Dashed green line remembers the maximum net balance reached at each",
-      "threshold"
-    ),
-    x = "Absolute sediment-depth change threshold (cm)",
-    y = "Meter positions at threshold or greater",
-    color = NULL,
-    fill = NULL
-  ) +
-  guides(
-    fill = "none",
-    color = guide_legend(
-      override.aes = list(
-        linetype = c("solid", "solid", "solid", "longdash"),
-        linewidth = c(1, 1, 1, 1.1)
-      )
+  scale_alpha_manual(
+    values = c(
+      "1 cm+" = 1,
+      "5 mm to <1 cm" = 0.65,
+      "1.5 mm to <5 mm" = 0.35
     )
   ) +
-  theme_minimal(base_size = 12) +
+  labs(
+    title = "ST22 net exceedance decomposed by sediment-change band",
+    subtitle = "Stacked segments are signed, mutually exclusive contributions; points below show the transect mean",
+    x = NULL,
+    y = "Net prevalence contribution",
+    fill = "Direction",
+    alpha = "Magnitude band"
+  ) +
+  guides(
+    fill = guide_legend(order = 1),
+    alpha = guide_legend(order = 2)
+  ) +
+  theme_minimal(base_size = 10) +
   theme(
     panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "grey75", fill = NA, linewidth = 0.4),
+    panel.grid.major.x = element_blank(),
+    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
     legend.position = "bottom",
-    plot.title = element_text(face = "bold"),
     plot.title.position = "plot"
+  )
+
+st22_stacked_mean_plot <- st22_weekly_mean_delta %>%
+  mutate(
+    survey_timepoint = factor(
+      survey,
+      levels = levels(st22_stacked_net_contributions$survey_timepoint)
+    )
+  ) %>%
+  ggplot(aes(x = survey_timepoint, y = mean_delta_cm)) +
+  geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
+  geom_point(aes(color = mean_direction), size = 2.3) +
+  scale_color_manual(
+    values = c(
+      "Positive transect mean" = "#7f0000",
+      "Negative transect mean" = "#084594"
+    ),
+    guide = "none"
   ) +
-  transition_manual(frame_label)
+  labs(
+    x = "Construction survey",
+    y = "Transect mean\ndelta (cm)"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
+    axis.text.x = element_text(size = 8, angle = 45, hjust = 1)
+  )
 
-st22_animation_file <- file.path(
-  "code",
-  "figures",
-  "st22_mirrored_empirical_max_net.gif"
-)
-dir.create(dirname(st22_animation_file), recursive = TRUE, showWarnings = FALSE)
-
-st22_animated_empirical_gif <- animate(
-  st22_animated_empirical_plot,
-  nframes = nrow(st22_animation_frames),
-  fps = 2,
-  end_pause = 5,
-  width = 720,
-  height = 504,
-  res = 72,
-  renderer = gifski_renderer(loop = TRUE)
-)
-
-anim_save(
-  st22_animation_file,
-  animation = st22_animated_empirical_gif
-)
-
-knitr::include_graphics(st22_animation_file)
+st22_stacked_net_threshold_plot / st22_stacked_mean_plot +
+  plot_layout(heights = c(4, 1), guides = "collect") &
+  theme(legend.position = "bottom")
 ```
 
-### Mirrored smoothed curves with net balance
 
-This version applies the same display to the kernel-density tail estimates.
-Outlined red and blue points are the empirical tail prevalences at the three
-regulatory thresholds; outlined black points are their empirical differences.
+## Case study 2: ST28
 
-```{r st22-mirrored-smoothed-with-net, fig.width=11, fig.height=15}
-st22_empirical_net_points <- st22_empirical_regulatory_points %>%
+### Sediment deltas
+
+For each survey, the three sediment-depth replicates are averaged at each meter
+position. The baseline mean at that same meter position is then subtracted from
+the construction-survey mean:
+
+\[
+\Delta_{m,t} = \overline{x}_{m,t} - \overline{x}_{m,baseline}
+\]
+
+Positive values indicate sediment accumulation relative to baseline. This
+meter-matched calculation retains spatial variation that would be lost by first
+averaging across the full transect.
+
+```{r st28-meter-deltas}
+st28_raw <- read_excel(
+  latest_construction_file,
+  sheet = "SedimentDepth_RawData"
+) %>%
+  clean_names() %>%
+  mutate(
+    date = as.Date(date),
+    survey = str_squish(survey),
+    survey_n = if_else(
+      survey == "Baseline",
+      0L,
+      as.integer(str_extract(survey, "\\d+"))
+    ),
+    transect = normalize_transect_id(transect),
+    meter = as.integer(meter),
+    meter_mean_sediment_cm = rowMeans(
+      pick(starts_with("sed_depth_cm_")),
+      na.rm = TRUE
+    )
+  ) %>%
+  filter(transect == "ST28")
+
+st28_baseline <- st28_raw %>%
+  filter(survey == "Baseline") %>%
   transmute(
+    meter,
+    baseline_mean_sediment_cm = meter_mean_sediment_cm
+  )
+
+st28_meter_deltas <- st28_raw %>%
+  filter(survey != "Baseline") %>%
+  left_join(st28_baseline, by = "meter") %>%
+  mutate(
+    sediment_delta_cm =
+      meter_mean_sediment_cm - baseline_mean_sediment_cm
+  ) %>%
+  select(
+    date,
+    survey,
+    survey_n,
+    transect,
+    meter,
+    baseline_mean_sediment_cm,
+    meter_mean_sediment_cm,
+    sediment_delta_cm
+  ) %>%
+  arrange(survey_n, meter)
+
+st28_delta_coverage <- st28_meter_deltas %>%
+  summarize(
+    n_meter_positions = n(),
+    n_missing_deltas = sum(is.na(sediment_delta_cm)),
+    .by = c(date, survey, survey_n)
+  ) %>%
+  arrange(survey_n)
+
+stopifnot(
+  all(st28_delta_coverage$n_meter_positions == 51),
+  all(st28_delta_coverage$n_missing_deltas == 0)
+)
+
+st28_delta_coverage
+```
+
+### Alternative Baseline-Con1-Con2 reference
+
+This sensitivity analysis defines a meter-specific alternative reference as
+the arithmetic mean of the Baseline, Con1, and Con2 meter means. Each survey
+receives equal weight. Because Con1 and Con2 contribute to the reference,
+alternative-reference results begin with Con3. This does not replace the BMP
+baseline analysis above.
+
+```{r st28-alternative-reference}
+st28_alternative_reference <- st28_raw %>%
+  filter(survey_n %in% 0:2) %>%
+  summarize(
+    alternative_reference_cm = mean(meter_mean_sediment_cm),
+    n_reference_surveys = n(),
+    .by = meter
+  ) %>%
+  left_join(st28_baseline, by = "meter") %>%
+  mutate(
+    reference_difference_cm =
+      alternative_reference_cm - baseline_mean_sediment_cm
+  )
+
+stopifnot(
+  nrow(st28_alternative_reference) == 51,
+  all(st28_alternative_reference$n_reference_surveys == 3)
+)
+
+st28_reference_summary <- st28_alternative_reference %>%
+  summarize(
+    n_meter_positions = n(),
+    official_baseline_mean_cm = mean(baseline_mean_sediment_cm),
+    alternative_reference_mean_cm = mean(alternative_reference_cm),
+    mean_reference_difference_cm = mean(reference_difference_cm),
+    median_reference_difference_cm = median(reference_difference_cm),
+    pct_alternative_lower = mean(reference_difference_cm < 0),
+    pct_alternative_higher = mean(reference_difference_cm > 0)
+  )
+
+st28_reference_summary
+```
+
+```{r st28-alternative-deltas}
+st28_alternative_deltas <- st28_raw %>%
+  filter(survey_n >= 3) %>%
+  left_join(
+    st28_alternative_reference %>%
+      select(meter, alternative_reference_cm),
+    by = "meter"
+  ) %>%
+  left_join(st28_baseline, by = "meter") %>%
+  mutate(
+    alternative_delta_cm =
+      meter_mean_sediment_cm - alternative_reference_cm,
+    official_delta_cm =
+      meter_mean_sediment_cm - baseline_mean_sediment_cm
+  ) %>%
+  select(
+    date,
+    survey,
+    survey_n,
+    transect,
+    meter,
+    meter_mean_sediment_cm,
+    baseline_mean_sediment_cm,
+    alternative_reference_cm,
+    official_delta_cm,
+    alternative_delta_cm
+  ) %>%
+  arrange(survey_n, meter)
+```
+
+### Meter-position diagnostic
+
+This heatmap provides a relatively raw view of sediment change before the
+transect is summarized with exceedance curves. It shows whether accumulation
+or loss is scattered among meter positions or forms spatially coherent patterns
+that persist through multiple surveys. Results use the Baseline-Con1-Con2
+alternative reference; outlined cells meet or exceed 1 cm accumulation.
+
+```{r st28-meter-position-heatmap, fig.width=11, fig.height=7.5}
+st28_spatial_deltas <- st28_alternative_deltas %>%
+  mutate(
+    survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
+    survey_label = fct_reorder(survey_label, survey_n, .desc = TRUE)
+  )
+
+st28_spatial_color_limit <- max(
+  abs(
+    quantile(
+      st28_spatial_deltas$alternative_delta_cm,
+      probs = c(0.02, 0.98),
+      na.rm = TRUE
+    )
+  )
+)
+
+st28_meter_position_heatmap <- ggplot(
+  st28_spatial_deltas,
+  aes(x = meter, y = survey_label, fill = alternative_delta_cm)
+) +
+  geom_tile() +
+  geom_point(
+    data = st28_spatial_deltas %>%
+      filter(alternative_delta_cm >= 1),
+    shape = 21,
+    fill = NA,
+    color = "#67001f",
+    size = 0.9,
+    stroke = 0.35
+  ) +
+  scale_fill_gradient2(
+    low = "#2166ac",
+    mid = "white",
+    high = "#b2182b",
+    midpoint = 0,
+    limits = c(-st28_spatial_color_limit, st28_spatial_color_limit),
+    oob = scales::squish
+  ) +
+  scale_x_continuous(breaks = seq(0, 50, by = 5), expand = c(0, 0)) +
+  labs(
+    title = "ST28 sediment change through time and along the transect",
+    subtitle = "Baseline-Con1-Con2 reference; outlined cells meet or exceed 1 cm accumulation",
+    x = "Meter position",
+    y = "Construction survey",
+    fill = "Sediment delta (cm)"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    panel.grid = element_blank(),
+    plot.title.position = "plot"
+  )
+
+st28_meter_position_heatmap
+```
+
+### Empirical tail-balance analysis
+
+The following views use empirical exceedance fractions rather than smoothed
+density estimates. At magnitude \(t\), accumulation exceedance is the fraction
+of meter positions with \(\Delta \ge t\), loss exceedance is the fraction with
+\(\Delta \le -t\), and tail balance is their difference.
+
+```{r st28-empirical-tail-profiles}
+st28_reference_deltas_long <- st28_alternative_deltas %>%
+  select(
+    date,
+    survey,
+    survey_n,
+    meter,
+    official_delta_cm,
+    alternative_delta_cm
+  ) %>%
+  pivot_longer(
+    c(official_delta_cm, alternative_delta_cm),
+    names_to = "reference",
+    values_to = "sediment_delta_cm"
+  ) %>%
+  mutate(
+    reference = recode(
+      reference,
+      official_delta_cm = "Official baseline",
+      alternative_delta_cm = "Baseline-Con1-Con2 average"
+    ),
+    reference = factor(
+      reference,
+      levels = c("Official baseline", "Baseline-Con1-Con2 average")
+    ),
+    survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
+    survey_label = fct_reorder(survey_label, survey_n)
+  )
+
+tail_profile_max_cm <- ceiling(
+  max(abs(st28_reference_deltas_long$sediment_delta_cm))
+)
+
+tail_profile_thresholds <- tibble(
+  threshold_cm = seq(0, tail_profile_max_cm, by = 0.05)
+)
+
+st28_empirical_tail_profiles <- crossing(
+  st28_reference_deltas_long,
+  tail_profile_thresholds
+) %>%
+  summarize(
+    accumulation_fraction = if_else(
+      first(threshold_cm) == 0,
+      mean(sediment_delta_cm > 0),
+      mean(sediment_delta_cm >= threshold_cm)
+    ),
+    loss_fraction = if_else(
+      first(threshold_cm) == 0,
+      mean(sediment_delta_cm < 0),
+      mean(sediment_delta_cm <= -threshold_cm)
+    ),
+    tail_balance = accumulation_fraction - loss_fraction,
+    .by = c(
+      date,
+      survey,
+      survey_n,
+      survey_label,
+      reference,
+      threshold_cm
+    )
+  ) %>%
+  arrange(reference, survey_n, threshold_cm)
+
+st28_alternative_exceedance_profiles <- st28_empirical_tail_profiles %>%
+  filter(reference == "Baseline-Con1-Con2 average")
+
+st28_observed_tail_max_cm <- max(
+  abs(st28_alternative_deltas$alternative_delta_cm)
+)
+
+st28_tail_plot_max_cm <- ceiling(
+  2 * st28_observed_tail_max_cm
+) / 2
+
+st28_threshold_axis_trans <- scales::pseudo_log_trans(
+  sigma = 0.15,
+  base = 10
+)
+
+st28_tail_plot_breaks_cm <- sort(unique(c(
+  c(0, 0.15, 0.5, 1, 5, 10, 15)[
+    c(0, 0.15, 0.5, 1, 5, 10, 15) <= st28_tail_plot_max_cm
+  ],
+  st28_tail_plot_max_cm
+)))
+
+st28_net_exceedance_profiles <- st28_alternative_exceedance_profiles %>%
+  filter(threshold_cm <= st28_tail_plot_max_cm)
+
+st28_weekly_mean_delta <- st28_alternative_deltas %>%
+  summarize(
+    mean_delta_cm = mean(alternative_delta_cm),
+    n_meter_positions = n(),
+    .by = c(date, survey, survey_n)
+  ) %>%
+  mutate(
+    survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
+    survey_label = fct_reorder(survey_label, survey_n),
+    mean_absolute_delta_cm = abs(mean_delta_cm),
+    mean_direction = if_else(
+      mean_delta_cm >= 0,
+      "Positive transect mean",
+      "Negative transect mean"
+    )
+  )
+```
+
+#### Mirrored empirical curves with net balance
+
+The red and blue curves remain the actual empirical accumulation and loss
+prevalences. The black curve overlays their difference: accumulation prevalence
+minus equivalent-loss prevalence. The shared x-axis extends through the full
+observed alternative-reference change range, rounded up to the next 0.5 cm.
+
+```{r st28-mirrored-empirical-with-net, fig.width=11, fig.height=15}
+st28_empirical_mirrored_profiles <-
+  st28_alternative_exceedance_profiles %>%
+  filter(threshold_cm <= st28_tail_plot_max_cm) %>%
+  select(
     date,
     survey,
     survey_n,
     survey_label,
     threshold_cm,
-    tail_balance
+    accumulation_fraction,
+    loss_fraction
+  ) %>%
+  pivot_longer(
+    c(accumulation_fraction, loss_fraction),
+    names_to = "tail",
+    values_to = "fraction"
+  ) %>%
+  mutate(
+    tail = recode(
+      tail,
+      accumulation_fraction = "Accumulation",
+      loss_fraction = "Equivalent loss"
+    ),
+    tail = factor(tail, levels = c("Accumulation", "Equivalent loss")),
+    signed_fraction = if_else(tail == "Accumulation", fraction, -fraction),
+    threshold_end = lead(threshold_cm, default = st28_tail_plot_max_cm),
+    .by = c(survey_n, tail)
   )
 
-st22_mirrored_smoothed_net_plot <- ggplot() +
+st28_mirrored_empirical_net_plot <- ggplot() +
   geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
-  geom_area(
-    data = st22_smoothed_mirrored_profiles,
+  geom_rect(
+    data = st28_empirical_mirrored_profiles,
     aes(
-      x = threshold_cm,
-      y = signed_fraction,
-      fill = tail,
-      group = tail
+      xmin = threshold_cm,
+      xmax = threshold_end,
+      ymin = pmin(signed_fraction, 0),
+      ymax = pmax(signed_fraction, 0),
+      fill = tail
     ),
     alpha = 0.4,
-    position = "identity"
+    color = NA
   ) +
-  geom_line(
-    data = st22_smoothed_mirrored_profiles,
+  geom_step(
+    data = st28_empirical_mirrored_profiles,
     aes(
       x = threshold_cm,
       y = signed_fraction,
       color = tail,
       group = tail
     ),
-    linewidth = 0.65
+    linewidth = 0.65,
+    direction = "hv"
   ) +
-  geom_line(
-    data = st22_smoothed_net_profiles,
-    aes(x = threshold_cm, y = smoothed_tail_balance),
+  geom_step(
+    data = st28_net_exceedance_profiles,
+    aes(x = threshold_cm, y = tail_balance),
     color = "white",
-    linewidth = 1.4
+    linewidth = 1.4,
+    direction = "hv"
   ) +
-  geom_line(
-    data = st22_smoothed_net_profiles,
-    aes(
-      x = threshold_cm,
-      y = smoothed_tail_balance,
-      color = "Net balance"
-    ),
-    linewidth = 0.7
+  geom_step(
+    data = st28_net_exceedance_profiles,
+    aes(x = threshold_cm, y = tail_balance, color = "Net balance"),
+    linewidth = 0.7,
+    direction = "hv"
   ) +
   geom_vline(
     xintercept = c(0.15, 0.5, 1),
@@ -2282,56 +1638,46 @@ st22_mirrored_smoothed_net_plot <- ggplot() +
     linewidth = 0.3,
     linetype = "dotted"
   ) +
-  geom_point(
-    data = st22_empirical_mirrored_points,
-    aes(
-      x = threshold_cm,
-      y = signed_fraction,
-      color = tail,
-      fill = tail
-    ),
-    shape = 21,
-    stroke = 0.5,
-    size = 2.1
-  ) +
-  geom_point(
-    data = st22_empirical_net_points,
-    aes(x = threshold_cm, y = tail_balance, color = "Net balance"),
-    fill = "white",
-    shape = 21,
-    stroke = 0.55,
-    size = 2.1
+  geom_vline(
+    data = st28_weekly_mean_delta,
+    aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+    linewidth = 0.75,
+    linetype = "longdash"
   ) +
   facet_wrap(~ survey_label, ncol = 4) +
   scale_x_continuous(
-    limits = c(0, 3),
-    breaks = 0:3,
+    trans = st28_threshold_axis_trans,
+    limits = c(0, st28_tail_plot_max_cm),
+    breaks = st28_tail_plot_breaks_cm,
+    labels = ~ str_remove(
+      format(.x, trim = TRUE, scientific = FALSE),
+      "\\.?0+$"
+    ),
     expand = expansion(mult = c(0, 0.01))
   ) +
   scale_y_continuous(
     labels = ~ scales::percent(abs(.x), accuracy = 1),
-    limits = c(-1, 1),
-    breaks = seq(-1, 1, by = 0.25),
+    breaks = seq(-0.75, 0.75, by = 0.25),
     expand = expansion(mult = c(0.01, 0.01))
   ) +
+  coord_cartesian(ylim = c(-0.75, 0.75)) +
   scale_color_manual(
     values = c(
       "Accumulation" = "#b2182b",
       "Equivalent loss" = "#2166ac",
-      "Net balance" = "#1a1a1a"
+      "Net balance" = "#1a1a1a",
+      "Positive transect mean" = "#7f0000",
+      "Negative transect mean" = "#084594"
     )
   ) +
   scale_fill_manual(
     values = c("Accumulation" = "#d6604d", "Equivalent loss" = "#4393c3")
   ) +
   labs(
-    title = "ST22 smoothed cumulative tails with net balance",
-    subtitle = paste(
-      "Black = accumulation prevalence minus equivalent-loss prevalence;",
-      "outlined points are empirical values"
-    ),
-    x = "Absolute sediment-depth change threshold (cm)",
-    y = "Estimated meter positions at threshold or greater",
+    title = "ST28 empirical cumulative tails with net balance",
+    subtitle = "Black = accumulation prevalence minus equivalent-loss prevalence",
+    x = "Absolute sediment-depth change threshold (cm; pseudo-log scale)",
+    y = "Meter positions at threshold or greater",
     color = NULL,
     fill = NULL
   ) +
@@ -2341,56 +1687,500 @@ st22_mirrored_smoothed_net_plot <- ggplot() +
     panel.grid.minor = element_blank(),
     panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
     strip.text = element_text(face = "bold", size = 8.5),
+    panel.spacing.x = unit(1, "lines"),
     legend.position = "bottom",
     plot.title.position = "plot"
   )
 
-st22_mirrored_smoothed_net_plot
+st28_mirrored_empirical_net_plot
 ```
 
-### Cumulative net exceedance at regulatory thresholds
+#### Animated empirical curves with maximum-net memory
 
-The curve above is already cumulative: its value at threshold (t) is
-(P(\Delta \ge t) - P(\Delta \le -t)). This companion view extracts that
-quantity at the three thresholds of interest and labels it directly. Thus, the
-1 cm bar represents the prevalence of accumulation of 1 cm **or greater** minus
-the prevalence of loss of 1 cm **or greater**.
+The red, blue, and black curves show the current survey. At each absolute
+sediment-depth threshold, the dashed green curve records the largest signed net
+balance observed from Con3 through the current survey. It therefore acts as a
+threshold-specific memory of the strongest accumulation-dominant result seen
+so far.
 
-```{r st22-cumulative-net-thresholds, fig.width=11, fig.height=15}
-st22_cumulative_net_thresholds <-
-  st22_alternative_exceedance_profiles %>%
-  filter(threshold_cm %in% c(0.15, 0.5, 1)) %>%
+```{r st28-animated-empirical-data}
+st28_animation_frames <- st28_net_exceedance_profiles %>%
+  distinct(survey_n, survey_label) %>%
+  left_join(
+    st28_weekly_mean_delta %>%
+      select(
+        survey_n,
+        mean_delta_cm,
+        mean_absolute_delta_cm,
+        mean_direction
+      ),
+    by = "survey_n"
+  ) %>%
+  arrange(survey_n) %>%
   mutate(
-    threshold_label = factor(
-      threshold_cm,
-      levels = c(0.15, 0.5, 1),
-      labels = c("1.5 mm+", "5 mm+", "1 cm+")
+    frame_label = paste0(
+      str_replace(survey_label, "\\n", "  |  ")
     ),
-    net_direction = if_else(
-      tail_balance >= 0,
-      "Net accumulation",
-      "Net loss"
-    ),
-    label_y = tail_balance + if_else(tail_balance >= 0, 0.035, -0.035),
-    label_vjust = if_else(tail_balance >= 0, 0, 1)
+    frame_label = factor(frame_label, levels = frame_label)
   )
 
-st22_cumulative_net_threshold_plot <- ggplot(
-  st22_cumulative_net_thresholds,
-  aes(x = threshold_label, y = tail_balance, fill = net_direction)
+st28_animation_tails <- st28_empirical_mirrored_profiles %>%
+  left_join(st28_animation_frames, by = c("survey_n", "survey_label"))
+
+st28_animation_net <- st28_net_exceedance_profiles %>%
+  left_join(st28_animation_frames, by = c("survey_n", "survey_label"))
+
+st28_animation_max_net <- st28_animation_net %>%
+  arrange(threshold_cm, survey_n) %>%
+  mutate(
+    maximum_net_to_date = cummax(tail_balance),
+    .by = threshold_cm
+  ) %>%
+  arrange(survey_n, threshold_cm)
+```
+
+```{r st28-static-animation-frames, fig.width=10, fig.height=7}
+make_st28_empirical_frame <- function(frame_survey_n) {
+  frame_info <- st28_animation_frames %>%
+    filter(survey_n == frame_survey_n)
+  frame_tails <- st28_animation_tails %>%
+    filter(survey_n == frame_survey_n)
+  frame_net <- st28_animation_net %>%
+    filter(survey_n == frame_survey_n)
+  frame_max_net <- st28_animation_max_net %>%
+    filter(survey_n == frame_survey_n)
+
+  ggplot() +
+    geom_hline(yintercept = 0, color = "grey35", linewidth = 0.45) +
+    geom_area(
+      data = frame_tails,
+      aes(
+        x = threshold_cm,
+        y = signed_fraction,
+        fill = tail,
+        group = tail
+      ),
+      alpha = 0.4,
+      position = "identity"
+    ) +
+    geom_step(
+      data = frame_tails,
+      aes(
+        x = threshold_cm,
+        y = signed_fraction,
+        color = tail,
+        group = tail
+      ),
+      linewidth = 0.9,
+      direction = "hv"
+    ) +
+    geom_step(
+      data = frame_net,
+      aes(x = threshold_cm, y = tail_balance),
+      color = "white",
+      linewidth = 2,
+      direction = "hv"
+    ) +
+    geom_step(
+      data = frame_net,
+      aes(x = threshold_cm, y = tail_balance, color = "Current net balance"),
+      linewidth = 1,
+      direction = "hv"
+    ) +
+    geom_step(
+      data = frame_max_net,
+      aes(x = threshold_cm, y = maximum_net_to_date),
+      color = "white",
+      linewidth = 2.2,
+      direction = "hv"
+    ) +
+    geom_step(
+      data = frame_max_net,
+      aes(
+        x = threshold_cm,
+        y = maximum_net_to_date,
+        color = "Maximum net to date"
+      ),
+      linewidth = 1.1,
+      linetype = "longdash",
+      direction = "hv"
+    ) +
+    geom_vline(
+      xintercept = c(0.15, 0.5, 1),
+      color = "grey45",
+      linewidth = 0.4,
+      linetype = "dotted"
+    ) +
+    geom_vline(
+      data = frame_info,
+      aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+      linewidth = 0.9,
+      linetype = "longdash"
+    ) +
+    scale_x_continuous(
+      trans = st28_threshold_axis_trans,
+      limits = c(0, st28_tail_plot_max_cm),
+      breaks = st28_tail_plot_breaks_cm,
+      labels = ~ str_remove(
+        format(.x, trim = TRUE, scientific = FALSE),
+        "\\.?0+$"
+      ),
+      expand = expansion(mult = c(0, 0.01))
+    ) +
+    scale_y_continuous(
+      labels = ~ scales::percent(abs(.x), accuracy = 1),
+      breaks = seq(-0.75, 0.75, by = 0.25),
+      expand = expansion(mult = c(0.01, 0.01))
+    ) +
+    coord_cartesian(ylim = c(-0.75, 0.75)) +
+    scale_color_manual(
+      values = c(
+        "Accumulation" = "#b2182b",
+        "Equivalent loss" = "#2166ac",
+        "Current net balance" = "#1a1a1a",
+        "Maximum net to date" = "#1b7837",
+        "Positive transect mean" = "#7f0000",
+        "Negative transect mean" = "#084594"
+      )
+    ) +
+    scale_fill_manual(
+      values = c("Accumulation" = "#d6604d", "Equivalent loss" = "#4393c3")
+    ) +
+    labs(
+      title = paste0("ST28 empirical cumulative tails: ", frame_info$frame_label),
+      subtitle = "Dashed green line remembers the maximum net balance reached at each threshold",
+      x = "Absolute sediment-depth change threshold (cm; pseudo-log scale)",
+      y = "Meter positions at threshold or greater",
+      color = NULL,
+      fill = NULL
+    ) +
+    guides(
+      fill = "none",
+      color = guide_legend(
+        override.aes = list(
+          linetype = c(
+            "solid",
+            "solid",
+            "solid",
+            "longdash",
+            "longdash"
+          ),
+          linewidth = c(1, 1, 1, 1.1, 0.9)
+        )
+      )
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(
+        color = "grey75",
+        fill = NA,
+        linewidth = 0.4
+      ),
+      legend.position = "bottom",
+      plot.title = element_text(face = "bold"),
+      plot.title.position = "plot"
+    )
+}
+
+st28_frame_dir <- file.path("code", "figures", "st28_animation_frames")
+dir.create(st28_frame_dir, recursive = TRUE, showWarnings = FALSE)
+
+st28_frame_files <- st28_animation_frames %>%
+  transmute(
+    survey_n,
+    frame_file = file.path(
+      st28_frame_dir,
+      sprintf("st28_frame_%02d.png", survey_n)
+    )
+  )
+
+pwalk(
+  st28_frame_files,
+  function(survey_n, frame_file) {
+    ggsave(
+      frame_file,
+      plot = make_st28_empirical_frame(survey_n),
+      width = 10,
+      height = 7,
+      units = "in",
+      dpi = 96,
+      bg = "white"
+    )
+  }
+)
+
+stopifnot(all(file.exists(st28_frame_files$frame_file)))
+
+st28_final_survey_n <- max(st28_animation_frames$survey_n)
+st28_final_net <- st28_animation_net %>%
+  filter(survey_n == st28_final_survey_n)
+st28_final_max_net <- st28_animation_max_net %>%
+  filter(survey_n == st28_final_survey_n)
+st28_final_frame_label <- st28_animation_frames %>%
+  filter(survey_n == st28_final_survey_n) %>%
+  pull(frame_label) %>%
+  as.character()
+st28_final_mean_delta <- st28_animation_frames %>%
+  filter(survey_n == st28_final_survey_n) %>%
+  select(mean_delta_cm, mean_absolute_delta_cm, mean_direction)
+
+st28_final_summary_plot <- ggplot() +
+  geom_hline(yintercept = 0, color = "grey35", linewidth = 0.45) +
+  geom_step(
+    data = st28_final_net,
+    aes(x = threshold_cm, y = tail_balance, color = "Most recent net balance"),
+    linewidth = 1.15,
+    direction = "hv"
+  ) +
+  geom_step(
+    data = st28_final_max_net,
+    aes(
+      x = threshold_cm,
+      y = maximum_net_to_date,
+      color = "Maximum net over monitoring period"
+    ),
+    linewidth = 1.2,
+    linetype = "longdash",
+    direction = "hv"
+  ) +
+  geom_vline(
+    xintercept = c(0.15, 0.5, 1),
+    color = "grey45",
+    linewidth = 0.4,
+    linetype = "dotted"
+  ) +
+  geom_vline(
+    data = st28_final_mean_delta,
+    aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+    linewidth = 0.9,
+    linetype = "longdash"
+  ) +
+  scale_x_continuous(
+    trans = st28_threshold_axis_trans,
+    limits = c(0, st28_tail_plot_max_cm),
+    breaks = st28_tail_plot_breaks_cm,
+    labels = ~ str_remove(
+      format(.x, trim = TRUE, scientific = FALSE),
+      "\\.?0+$"
+    ),
+    expand = expansion(mult = c(0, 0.01))
+  ) +
+  scale_y_continuous(
+    labels = scales::label_percent(accuracy = 1),
+    breaks = seq(-0.75, 0.75, by = 0.25),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  coord_cartesian(ylim = c(-0.75, 0.75)) +
+  scale_color_manual(
+    values = c(
+      "Most recent net balance" = "#1a1a1a",
+      "Maximum net over monitoring period" = "#1b7837",
+      "Positive transect mean" = "#7f0000",
+      "Negative transect mean" = "#084594"
+    )
+  ) +
+  labs(
+    title = paste0("ST28 net-balance summary: ", st28_final_frame_label),
+    subtitle = "Black is the most recent net balance; dashed green is the maximum observed at each threshold",
+    x = "Absolute sediment-depth change threshold (cm; pseudo-log scale)",
+    y = "Accumulation minus equivalent-loss prevalence",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(color = "grey75", fill = NA, linewidth = 0.4),
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold"),
+    plot.title.position = "plot"
+  )
+
+st28_final_summary_file <- file.path(
+  st28_frame_dir,
+  "st28_frame_final_summary.png"
+)
+ggsave(
+  st28_final_summary_file,
+  plot = st28_final_summary_plot,
+  width = 10,
+  height = 7,
+  units = "in",
+  dpi = 96,
+  bg = "white"
+)
+```
+
+```{r st28-interactive-empirical-player, echo=FALSE, results='asis'}
+st28_player_id <- "st28-empirical-memory-player"
+st28_player_frames <- c(
+  map_chr(st28_frame_files$frame_file, knitr::image_uri),
+  knitr::image_uri(st28_final_summary_file)
+)
+st28_player_frames_json <- jsonlite::toJSON(
+  st28_player_frames,
+  auto_unbox = TRUE
+)
+
+st28_player <- htmltools::tags$div(
+  id = st28_player_id,
+  class = "st28-player",
+  htmltools::tags$style(htmltools::HTML(paste(
+    ".st28-player { max-width: 960px; margin: 1rem auto; }",
+    ".st28-player img { width: 100%; height: auto; display: block; cursor: pointer; border: 1px solid #d4d4d4; }",
+    ".st28-player-controls { display: flex; align-items: center; gap: 0.65rem; margin-top: 0.55rem; }",
+    ".st28-player button { border: 1px solid #777; background: #fff; color: #222; padding: 0.35rem 0.75rem; cursor: pointer; }",
+    ".st28-player button:hover { background: #f0f0f0; }",
+    ".st28-player input[type=range] { flex: 1; }",
+    ".st28-player-status { min-width: 5.5rem; text-align: right; font-variant-numeric: tabular-nums; }",
+    sep = "\n"
+  ))),
+  htmltools::tags$img(
+    src = st28_player_frames[[1]],
+    alt = "Animated ST28 empirical accumulation, loss, and net-balance curves"
+  ),
+  htmltools::tags$div(
+    class = "st28-player-controls",
+    htmltools::tags$button(type = "button", `data-action` = "play", "Play"),
+    htmltools::tags$button(type = "button", `data-action` = "restart", "Restart"),
+    htmltools::tags$input(
+      type = "range",
+      min = 0,
+      max = length(st28_player_frames) - 1,
+      value = 0,
+      step = 1,
+      `aria-label` = "Animation frame"
+    ),
+    htmltools::tags$span(
+      class = "st28-player-status",
+      paste0("1 / ", length(st28_player_frames))
+    )
+  ),
+  htmltools::tags$script(htmltools::HTML(sprintf(paste0(
+    "(function() {",
+    "const root=document.getElementById('%s');",
+    "const frames=%s;",
+    "const image=root.querySelector('img');",
+    "const playButton=root.querySelector('[data-action=play]');",
+    "const restartButton=root.querySelector('[data-action=restart]');",
+    "const slider=root.querySelector('input[type=range]');",
+    "const status=root.querySelector('.st28-player-status');",
+    "let index=0; let timer=null;",
+    "function showFrame(nextIndex){",
+    "index=Math.max(0,Math.min(nextIndex,frames.length-1));",
+    "image.src=frames[index]; slider.value=index;",
+    "status.textContent=(index+1)+' / '+frames.length;}",
+    "function stop(){if(timer!==null)window.clearInterval(timer);",
+    "timer=null; playButton.textContent=index===frames.length-1?'Play again':'Play';}",
+    "function play(){if(timer!==null){stop();return;}",
+    "if(index===frames.length-1)showFrame(0); playButton.textContent='Pause';",
+    "timer=window.setInterval(function(){",
+    "if(index>=frames.length-1){stop();return;} showFrame(index+1);",
+    "if(index===frames.length-1)stop();},500);}",
+    "playButton.addEventListener('click',play);",
+    "image.addEventListener('click',play);",
+    "restartButton.addEventListener('click',function(){stop();showFrame(0);});",
+    "slider.addEventListener('input',function(){stop();showFrame(Number(this.value));});",
+    "})();"
+  ), st28_player_id, st28_player_frames_json)))
+)
+
+st28_player_html <- as.character(st28_player)
+st28_player_html <- gsub(">[[:space:]]+<", "><", st28_player_html)
+cat(st28_player_html)
+```
+
+#### Stacked net contributions by sediment-change band
+
+This view decomposes cumulative net exceedance into three mutually exclusive
+magnitude bands. The `1 cm+` segment is the net balance at 1 cm or greater; the
+two lighter segments are the additional net contributions between successive
+thresholds. The signed segment values sum to the cumulative net balance at
+1.5 mm or greater.
+
+```{r st28-stacked-net-threshold-contributions, fig.width=12, fig.height=8}
+st28_cumulative_net_thresholds <-
+  st28_alternative_exceedance_profiles %>%
+  mutate(threshold_key_cm = round(threshold_cm, 2)) %>%
+  filter(threshold_key_cm %in% c(0.15, 0.5, 1)) %>%
+  mutate(
+    survey_timepoint = factor(
+      survey,
+      levels = survey[order(survey_n)] %>% unique()
+    )
+  )
+
+st28_stacked_net_wide <- st28_cumulative_net_thresholds %>%
+  mutate(
+    threshold_code = recode(
+      as.character(threshold_key_cm),
+      `0.15` = "net_1_5mm",
+      `0.5` = "net_5mm",
+      `1` = "net_1cm"
+    )
+  ) %>%
+  select(
+    date,
+    survey,
+    survey_n,
+    survey_timepoint,
+    threshold_code,
+    tail_balance
+  ) %>%
+  pivot_wider(names_from = threshold_code, values_from = tail_balance) %>%
+  mutate(
+    `1 cm+` = net_1cm,
+    `5 mm to <1 cm` = net_5mm - net_1cm,
+    `1.5 mm to <5 mm` = net_1_5mm - net_5mm,
+    total_net_1_5mm = net_1_5mm
+  )
+
+st28_stacked_net_contributions <- st28_stacked_net_wide %>%
+  pivot_longer(
+    c(`1 cm+`, `5 mm to <1 cm`, `1.5 mm to <5 mm`),
+    names_to = "magnitude_band",
+    values_to = "net_contribution"
+  ) %>%
+  mutate(
+    magnitude_band = factor(
+      magnitude_band,
+      levels = c("1 cm+", "5 mm to <1 cm", "1.5 mm to <5 mm")
+    ),
+    contribution_direction = factor(
+      if_else(net_contribution >= 0, "Accumulation", "Loss"),
+      levels = c("Accumulation", "Loss")
+    )
+  )
+
+st28_stacked_identity_check <- st28_stacked_net_contributions %>%
+  summarize(
+    reconstructed_total = sum(net_contribution),
+    expected_total = first(total_net_1_5mm),
+    .by = survey_n
+  )
+
+stopifnot(all(
+  near(
+    st28_stacked_identity_check$reconstructed_total,
+    st28_stacked_identity_check$expected_total
+  )
+))
+
+st28_stacked_net_threshold_plot <- ggplot(
+  st28_stacked_net_contributions,
+  aes(
+    x = survey_timepoint,
+    y = net_contribution,
+    fill = contribution_direction,
+    alpha = magnitude_band,
+    group = magnitude_band
+  )
 ) +
   geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
-  geom_col(width = 0.65) +
-  geom_text(
-    aes(
-      y = label_y,
-      label = scales::percent(tail_balance, accuracy = 1),
-      vjust = label_vjust
-    ),
-    size = 2.5,
-    show.legend = FALSE
+  geom_col(
+    width = 0.75,
+    position = position_stack(reverse = TRUE)
   ) +
-  facet_wrap(~ survey_label, ncol = 4) +
   scale_y_continuous(
     labels = scales::label_percent(accuracy = 1),
     limits = c(-0.75, 0.75),
@@ -2398,184 +2188,68 @@ st22_cumulative_net_threshold_plot <- ggplot(
     expand = expansion(mult = c(0.03, 0.03))
   ) +
   scale_fill_manual(
-    values = c("Net accumulation" = "#d6604d", "Net loss" = "#4393c3")
+    values = c("Accumulation" = "#b2182b", "Loss" = "#2166ac")
+  ) +
+  scale_alpha_manual(
+    values = c(
+      "1 cm+" = 1,
+      "5 mm to <1 cm" = 0.65,
+      "1.5 mm to <5 mm" = 0.35
+    )
   ) +
   labs(
-    title = "ST22 cumulative net exceedance at regulatory thresholds",
-    subtitle = paste(
-      "Each value is accumulation prevalence minus equivalent loss prevalence",
-      "at that threshold or greater"
-    ),
+    title = "ST28 net exceedance decomposed by sediment-change band",
+    subtitle = "Stacked segments are signed, mutually exclusive contributions; points below show the transect mean",
     x = NULL,
-    y = "Net prevalence at threshold or greater",
-    fill = NULL
+    y = "Net prevalence contribution",
+    fill = "Direction",
+    alpha = "Magnitude band"
+  ) +
+  guides(
+    fill = guide_legend(order = 1),
+    alpha = guide_legend(order = 2)
   ) +
   theme_minimal(base_size = 10) +
   theme(
     panel.grid.minor = element_blank(),
     panel.grid.major.x = element_blank(),
     panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold", size = 8.5),
-    axis.text.x = element_text(size = 8),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
     legend.position = "bottom",
     plot.title.position = "plot"
   )
 
-st22_cumulative_net_threshold_plot
-```
-
-### Tail-balance heatmap
-
-```{r st22-tail-balance-heatmap, fig.width=11, fig.height=11}
-tail_balance_limit <- max(
-  abs(st22_empirical_tail_profiles$tail_balance),
-  na.rm = TRUE
-)
-
-st22_tail_balance_heatmap <- ggplot(
-  st22_empirical_tail_profiles,
-  aes(x = threshold_cm, y = survey_label, fill = tail_balance)
-) +
-  geom_raster() +
-  geom_vline(
-    xintercept = c(0.15, 0.5, 1),
-    color = "grey15",
-    linewidth = 0.35,
-    linetype = "dotted"
-  ) +
-  facet_wrap(~ reference, ncol = 1) +
-  scale_fill_gradient2(
-    low = "#2166ac",
-    mid = "white",
-    high = "#b2182b",
-    midpoint = 0,
-    limits = c(-tail_balance_limit, tail_balance_limit),
-    labels = scales::label_percent(accuracy = 1)
-  ) +
-  scale_x_continuous(
-    breaks = seq(0, tail_profile_max_cm, by = 1),
-    expand = expansion(mult = c(0, 0))
-  ) +
-  labs(
-    title = "ST22 tail balance across weeks and sediment-change thresholds",
-    subtitle = "Red indicates more accumulation; blue indicates more equivalent loss",
-    x = "Absolute sediment-depth change threshold (cm)",
-    y = "Construction survey",
-    fill = "Accumulation minus loss"
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid = element_blank(),
-    strip.text = element_text(face = "bold"),
-    plot.title.position = "plot"
-  )
-
-st22_tail_balance_heatmap
-```
-
-### Regulatory-threshold time series
-
-```{r st22-threshold-time-series, fig.width=11, fig.height=5.5}
-st22_threshold_time_series <- st22_reference_comparison %>%
+st28_stacked_mean_plot <- st28_weekly_mean_delta %>%
   mutate(
-    threshold_label = factor(
-      threshold_label,
-      levels = c("1.5 mm", "5 mm", "1 cm")
-    ),
-    reference = factor(
-      reference,
-      levels = c("Official baseline", "Baseline-Con1-Con2 average")
+    survey_timepoint = factor(
+      survey,
+      levels = levels(st28_stacked_net_contributions$survey_timepoint)
     )
   ) %>%
-  ggplot(
-    aes(
-      x = date,
-      y = tail_balance,
-      color = reference,
-      group = reference
-    )
-  ) +
+  ggplot(aes(x = survey_timepoint, y = mean_delta_cm)) +
   geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
-  geom_line(linewidth = 0.7) +
-  geom_point(size = 1.8) +
-  facet_wrap(~ threshold_label, nrow = 1) +
+  geom_point(aes(color = mean_direction), size = 2.3) +
   scale_color_manual(
     values = c(
-      "Official baseline" = "#555555",
-      "Baseline-Con1-Con2 average" = "#b2182b"
-    )
+      "Positive transect mean" = "#7f0000",
+      "Negative transect mean" = "#084594"
+    ),
+    guide = "none"
   ) +
-  scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
-  scale_x_date(date_breaks = "2 months", date_labels = "%b\n%Y") +
   labs(
-    title = "ST22 tail balance at the three sediment thresholds",
-    subtitle = "Positive values indicate accumulation exceeds equivalent loss",
-    x = NULL,
-    y = "Accumulation fraction minus loss fraction",
-    color = "Reference"
+    x = "Construction survey",
+    y = "Transect mean\ndelta (cm)"
   ) +
   theme_minimal(base_size = 10) +
   theme(
     panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
     panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
-    strip.text = element_text(face = "bold"),
-    legend.position = "bottom",
-    plot.title.position = "plot"
+    axis.text.x = element_text(size = 8, angle = 45, hjust = 1)
   )
 
-st22_threshold_time_series
-```
-
-### Meter-position heatmap
-
-```{r st22-meter-position-heatmap, fig.width=11, fig.height=12}
-st22_spatial_color_limit <- max(
-  abs(
-    quantile(
-      st22_reference_deltas_long$sediment_delta_cm,
-      probs = c(0.02, 0.98),
-      na.rm = TRUE
-    )
-  )
-)
-
-st22_meter_position_heatmap <- ggplot(
-  st22_reference_deltas_long,
-  aes(x = meter, y = survey_label, fill = sediment_delta_cm)
-) +
-  geom_tile() +
-  geom_point(
-    data = st22_reference_deltas_long %>%
-      filter(sediment_delta_cm >= 1),
-    shape = 21,
-    fill = NA,
-    color = "#67001f",
-    size = 0.9,
-    stroke = 0.35
-  ) +
-  facet_wrap(~ reference, ncol = 1) +
-  scale_fill_gradient2(
-    low = "#2166ac",
-    mid = "white",
-    high = "#b2182b",
-    midpoint = 0,
-    limits = c(-st22_spatial_color_limit, st22_spatial_color_limit),
-    oob = scales::squish
-  ) +
-  scale_x_continuous(breaks = seq(0, 50, by = 5), expand = c(0, 0)) +
-  labs(
-    title = "ST22 sediment change through time and along the transect",
-    subtitle = "Outlined cells meet or exceed 1 cm accumulation; color limits use the 2nd and 98th percentiles",
-    x = "Meter position",
-    y = "Construction survey",
-    fill = "Sediment delta (cm)"
-  ) +
-  theme_minimal(base_size = 10) +
-  theme(
-    panel.grid = element_blank(),
-    strip.text = element_text(face = "bold"),
-    plot.title.position = "plot"
-  )
-
-st22_meter_position_heatmap
+st28_stacked_net_threshold_plot / st28_stacked_mean_plot +
+  plot_layout(heights = c(4, 1), guides = "collect") &
+  theme(legend.position = "bottom")
 ```
