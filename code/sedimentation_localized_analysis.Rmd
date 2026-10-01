@@ -2253,3 +2253,739 @@ st28_stacked_net_threshold_plot / st28_stacked_mean_plot +
   plot_layout(heights = c(4, 1), guides = "collect") &
   theme(legend.position = "bottom")
 ```
+
+## Remaining monitored transects
+
+The same workflow is applied below to every other transect with construction
+monitoring data. ACER_NS, ACER_WE, BT23, BT23_S, BT24, and BT24_N are not
+included because the current cumulative workbook contains baseline observations
+but no construction surveys for those transects. ST1 and ST38 extend to 150 m,
+but Con1 and Con2 cover only meters 0-50; their case studies therefore use the
+consistently monitored 0-50 m segment.
+
+```{r remaining-transect-case-studies, echo=FALSE, results='asis'}
+all_sediment_raw <- read_excel(
+  latest_construction_file,
+  sheet = "SedimentDepth_RawData"
+) %>%
+  clean_names() %>%
+  mutate(
+    date = as.Date(date),
+    survey = str_squish(survey),
+    survey_n = if_else(
+      survey == "Baseline",
+      0L,
+      as.integer(str_extract(survey, "\\d+"))
+    ),
+    transect = normalize_transect_id(transect),
+    meter = as.integer(meter),
+    meter_mean_sediment_cm = rowMeans(
+      pick(starts_with("sed_depth_cm_")),
+      na.rm = TRUE
+    )
+  )
+
+remaining_case_transects <- c(
+  "ST1", "ST2", "ST4", "ST5", "ST31", "ST34",
+  "ST35", "ST36", "ST38", "ST40", "ST45"
+)
+
+safe_case_slug <- function(x) str_to_lower(str_replace_all(x, "[^A-Za-z0-9]+", "-"))
+
+case_img_tag <- function(path, alt) {
+  as.character(
+    htmltools::tags$img(
+      src = knitr::image_uri(path),
+      alt = alt,
+      style = "display:block;width:100%;height:auto;margin:0.75rem auto 1.5rem;"
+    )
+  )
+}
+
+build_remaining_case_study <- function(transect_id, case_number) {
+  case_slug <- safe_case_slug(transect_id)
+  case_raw <- all_sediment_raw %>%
+    filter(transect == transect_id, meter <= 50)
+  case_baseline <- case_raw %>%
+    filter(survey_n == 0) %>%
+    transmute(meter, baseline_mean_sediment_cm = meter_mean_sediment_cm)
+  case_reference <- case_raw %>%
+    filter(survey_n %in% 0:2) %>%
+    summarize(
+      alternative_reference_cm = mean(meter_mean_sediment_cm),
+      n_reference_surveys = n(),
+      .by = meter
+    ) %>%
+    left_join(case_baseline, by = "meter") %>%
+    mutate(
+      reference_difference_cm =
+        alternative_reference_cm - baseline_mean_sediment_cm
+    )
+
+  stopifnot(
+    nrow(case_reference) == n_distinct(case_raw$meter),
+    all(case_reference$n_reference_surveys == 3)
+  )
+
+  case_reference_summary <- case_reference %>%
+    summarize(
+      `Meter positions` = n(),
+      `Official baseline mean (cm)` = mean(baseline_mean_sediment_cm),
+      `Alternative reference mean (cm)` = mean(alternative_reference_cm),
+      `Mean reference difference (cm)` = mean(reference_difference_cm),
+      `Alternative lower (%)` = 100 * mean(reference_difference_cm < 0)
+    )
+
+  case_deltas <- case_raw %>%
+    filter(survey_n >= 3) %>%
+    left_join(
+      case_reference %>% select(meter, alternative_reference_cm),
+      by = "meter"
+    ) %>%
+    mutate(alternative_delta_cm = meter_mean_sediment_cm - alternative_reference_cm) %>%
+    arrange(survey_n, meter)
+
+  case_coverage <- case_deltas %>%
+    summarize(
+      n_meter_positions = n(),
+      n_missing = sum(is.na(alternative_delta_cm)),
+      .by = c(survey, survey_n)
+    )
+  stopifnot(
+    all(case_coverage$n_meter_positions == n_distinct(case_raw$meter)),
+    all(case_coverage$n_missing == 0)
+  )
+
+  case_deltas <- case_deltas %>%
+    mutate(
+      survey_label = paste0(survey, "\n", format(date, "%Y-%m-%d")),
+      survey_label = fct_reorder(survey_label, survey_n)
+    )
+
+  case_plot_max_cm <- ceiling(2 * max(abs(case_deltas$alternative_delta_cm))) / 2
+  case_thresholds <- tibble(
+    threshold_cm = seq(0, ceiling(case_plot_max_cm), by = 0.05)
+  )
+  case_profiles <- crossing(case_deltas, case_thresholds) %>%
+    summarize(
+      accumulation_fraction = if_else(
+        first(threshold_cm) == 0,
+        mean(alternative_delta_cm > 0),
+        mean(alternative_delta_cm >= threshold_cm)
+      ),
+      loss_fraction = if_else(
+        first(threshold_cm) == 0,
+        mean(alternative_delta_cm < 0),
+        mean(alternative_delta_cm <= -threshold_cm)
+      ),
+      tail_balance = accumulation_fraction - loss_fraction,
+      .by = c(date, survey, survey_n, survey_label, threshold_cm)
+    ) %>%
+    filter(threshold_cm <= case_plot_max_cm) %>%
+    arrange(survey_n, threshold_cm)
+
+  case_means <- case_deltas %>%
+    summarize(
+      mean_delta_cm = mean(alternative_delta_cm),
+      .by = c(date, survey, survey_n, survey_label)
+    ) %>%
+    mutate(
+      mean_absolute_delta_cm = abs(mean_delta_cm),
+      mean_direction = if_else(
+        mean_delta_cm >= 0,
+        "Positive transect mean",
+        "Negative transect mean"
+      )
+    )
+
+  case_tails <- case_profiles %>%
+    select(
+      date, survey, survey_n, survey_label, threshold_cm,
+      accumulation_fraction, loss_fraction
+    ) %>%
+    pivot_longer(
+      c(accumulation_fraction, loss_fraction),
+      names_to = "tail",
+      values_to = "fraction"
+    ) %>%
+    mutate(
+      tail = recode(
+        tail,
+        accumulation_fraction = "Accumulation",
+        loss_fraction = "Equivalent loss"
+      ),
+      tail = factor(tail, levels = c("Accumulation", "Equivalent loss")),
+      signed_fraction = if_else(tail == "Accumulation", fraction, -fraction),
+      threshold_end = lead(threshold_cm, default = case_plot_max_cm),
+      .by = c(survey_n, tail)
+    )
+
+  case_breaks <- sort(unique(c(
+    seq(0, floor(case_plot_max_cm), by = 1),
+    case_plot_max_cm
+  )))
+
+  case_spatial <- case_deltas %>%
+    mutate(survey_label = fct_reorder(survey_label, survey_n, .desc = TRUE))
+  case_color_limit <- max(abs(quantile(
+    case_spatial$alternative_delta_cm,
+    probs = c(0.02, 0.98),
+    na.rm = TRUE
+  )))
+  case_meter_break <- if_else(max(case_spatial$meter) > 70, 10, 5)
+  case_heatmap <- ggplot(
+    case_spatial,
+    aes(x = meter, y = survey_label, fill = alternative_delta_cm)
+  ) +
+    geom_tile() +
+    geom_point(
+      data = case_spatial %>% filter(alternative_delta_cm >= 1),
+      shape = 21,
+      fill = NA,
+      color = "#67001f",
+      size = 0.9,
+      stroke = 0.35
+    ) +
+    scale_fill_gradient2(
+      low = "#2166ac",
+      mid = "white",
+      high = "#b2182b",
+      midpoint = 0,
+      limits = c(-case_color_limit, case_color_limit),
+      oob = scales::squish
+    ) +
+    scale_x_continuous(
+      breaks = seq(0, max(case_spatial$meter), by = case_meter_break),
+      expand = c(0, 0)
+    ) +
+    labs(
+      title = paste(transect_id, "sediment change through time and along the transect"),
+      subtitle = "Baseline-Con1-Con2 reference; outlined cells meet or exceed 1 cm accumulation",
+      x = "Meter position",
+      y = "Construction survey",
+      fill = "Sediment delta (cm)"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(panel.grid = element_blank(), plot.title.position = "plot")
+
+  case_mirrored <- ggplot() +
+    geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
+    geom_rect(
+      data = case_tails,
+      aes(
+        xmin = threshold_cm,
+        xmax = threshold_end,
+        ymin = pmin(signed_fraction, 0),
+        ymax = pmax(signed_fraction, 0),
+        fill = tail
+      ),
+      alpha = 0.4,
+      color = NA
+    ) +
+    geom_step(
+      data = case_tails,
+      aes(x = threshold_cm, y = signed_fraction, color = tail, group = tail),
+      linewidth = 0.65,
+      direction = "hv"
+    ) +
+    geom_step(
+      data = case_profiles,
+      aes(x = threshold_cm, y = tail_balance),
+      color = "white",
+      linewidth = 1.4,
+      direction = "hv"
+    ) +
+    geom_step(
+      data = case_profiles,
+      aes(x = threshold_cm, y = tail_balance, color = "Net balance"),
+      linewidth = 0.7,
+      direction = "hv"
+    ) +
+    geom_vline(
+      xintercept = c(0.15, 0.5, 1),
+      color = "grey45",
+      linewidth = 0.3,
+      linetype = "dotted"
+    ) +
+    geom_vline(
+      data = case_means,
+      aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+      linewidth = 0.75,
+      linetype = "longdash"
+    ) +
+    facet_wrap(~ survey_label, ncol = 4) +
+    scale_x_continuous(
+      limits = c(0, case_plot_max_cm),
+      breaks = case_breaks,
+      expand = expansion(mult = c(0, 0.01))
+    ) +
+    scale_y_continuous(
+      labels = ~ scales::percent(abs(.x), accuracy = 1),
+      breaks = seq(-0.75, 0.75, by = 0.25),
+      expand = expansion(mult = c(0.01, 0.01))
+    ) +
+    coord_cartesian(ylim = c(-0.75, 0.75)) +
+    scale_color_manual(values = c(
+      "Accumulation" = "#b2182b",
+      "Equivalent loss" = "#2166ac",
+      "Net balance" = "#1a1a1a",
+      "Positive transect mean" = "#7f0000",
+      "Negative transect mean" = "#084594"
+    )) +
+    scale_fill_manual(values = c(
+      "Accumulation" = "#d6604d",
+      "Equivalent loss" = "#4393c3"
+    )) +
+    labs(
+      title = paste(transect_id, "empirical cumulative tails with net balance"),
+      subtitle = "Black = accumulation prevalence minus equivalent-loss prevalence",
+      x = "Absolute sediment-depth change threshold (cm)",
+      y = "Meter positions at threshold or greater",
+      color = NULL,
+      fill = NULL
+    ) +
+    guides(fill = "none") +
+    theme_minimal(base_size = 10) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
+      strip.text = element_text(face = "bold", size = 8.5),
+      panel.spacing.x = unit(1, "lines"),
+      legend.position = "bottom",
+      plot.title.position = "plot"
+    )
+
+  case_frames <- case_profiles %>%
+    distinct(survey_n, survey_label) %>%
+    left_join(
+      case_means %>% select(
+        survey_n, mean_delta_cm, mean_absolute_delta_cm, mean_direction
+      ),
+      by = "survey_n"
+    ) %>%
+    arrange(survey_n) %>%
+    mutate(frame_label = str_replace(survey_label, "\n", "  |  "))
+  case_animation_tails <- case_tails %>%
+    left_join(case_frames, by = c("survey_n", "survey_label"))
+  case_animation_net <- case_profiles %>%
+    left_join(case_frames, by = c("survey_n", "survey_label"))
+  case_animation_max <- case_animation_net %>%
+    arrange(threshold_cm, survey_n) %>%
+    mutate(maximum_net_to_date = cummax(tail_balance), .by = threshold_cm) %>%
+    arrange(survey_n, threshold_cm)
+
+  make_case_frame <- function(frame_survey_n) {
+    frame_info <- case_frames %>% filter(survey_n == frame_survey_n)
+    frame_tails <- case_animation_tails %>% filter(survey_n == frame_survey_n)
+    frame_net <- case_animation_net %>% filter(survey_n == frame_survey_n)
+    frame_max <- case_animation_max %>% filter(survey_n == frame_survey_n)
+    ggplot() +
+      geom_hline(yintercept = 0, color = "grey35", linewidth = 0.45) +
+      geom_area(
+        data = frame_tails,
+        aes(x = threshold_cm, y = signed_fraction, fill = tail, group = tail),
+        alpha = 0.4,
+        position = "identity"
+      ) +
+      geom_step(
+        data = frame_tails,
+        aes(x = threshold_cm, y = signed_fraction, color = tail, group = tail),
+        linewidth = 0.9,
+        direction = "hv"
+      ) +
+      geom_step(
+        data = frame_net,
+        aes(x = threshold_cm, y = tail_balance),
+        color = "white",
+        linewidth = 2,
+        direction = "hv"
+      ) +
+      geom_step(
+        data = frame_net,
+        aes(x = threshold_cm, y = tail_balance, color = "Current net balance"),
+        linewidth = 1,
+        direction = "hv"
+      ) +
+      geom_step(
+        data = frame_max,
+        aes(x = threshold_cm, y = maximum_net_to_date),
+        color = "white",
+        linewidth = 2.2,
+        direction = "hv"
+      ) +
+      geom_step(
+        data = frame_max,
+        aes(x = threshold_cm, y = maximum_net_to_date, color = "Maximum net to date"),
+        linewidth = 1.1,
+        linetype = "longdash",
+        direction = "hv"
+      ) +
+      geom_vline(
+        xintercept = c(0.15, 0.5, 1),
+        color = "grey45",
+        linewidth = 0.4,
+        linetype = "dotted"
+      ) +
+      geom_vline(
+        data = frame_info,
+        aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+        linewidth = 0.9,
+        linetype = "longdash"
+      ) +
+      scale_x_continuous(
+        limits = c(0, case_plot_max_cm),
+        breaks = case_breaks,
+        expand = expansion(mult = c(0, 0.01))
+      ) +
+      scale_y_continuous(
+        labels = ~ scales::percent(abs(.x), accuracy = 1),
+        breaks = seq(-0.75, 0.75, by = 0.25),
+        expand = expansion(mult = c(0.01, 0.01))
+      ) +
+      coord_cartesian(ylim = c(-0.75, 0.75)) +
+      scale_color_manual(values = c(
+        "Accumulation" = "#b2182b",
+        "Equivalent loss" = "#2166ac",
+        "Current net balance" = "#1a1a1a",
+        "Maximum net to date" = "#1b7837",
+        "Positive transect mean" = "#7f0000",
+        "Negative transect mean" = "#084594"
+      )) +
+      scale_fill_manual(values = c(
+        "Accumulation" = "#d6604d",
+        "Equivalent loss" = "#4393c3"
+      )) +
+      labs(
+        title = paste0(
+          transect_id,
+          " empirical cumulative tails: ",
+          frame_info$frame_label
+        ),
+        subtitle = "Dashed green line remembers the maximum net balance reached at each threshold",
+        x = "Absolute sediment-depth change threshold (cm)",
+        y = "Meter positions at threshold or greater",
+        color = NULL,
+        fill = NULL
+      ) +
+      guides(fill = "none") +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(color = "grey75", fill = NA, linewidth = 0.4),
+        legend.position = "bottom",
+        plot.title = element_text(face = "bold"),
+        plot.title.position = "plot"
+      )
+  }
+
+  case_frame_dir <- file.path("code", "figures", paste0(case_slug, "_animation_frames"))
+  dir.create(case_frame_dir, recursive = TRUE, showWarnings = FALSE)
+  case_frame_files <- case_frames %>%
+    transmute(
+      survey_n,
+      frame_file = file.path(
+        case_frame_dir,
+        sprintf("%s_frame_%02d.png", case_slug, survey_n)
+      )
+    )
+  pwalk(case_frame_files, function(survey_n, frame_file) {
+    ggsave(
+      frame_file,
+      plot = make_case_frame(survey_n),
+      width = 10,
+      height = 7,
+      units = "in",
+      dpi = 96,
+      bg = "white"
+    )
+  })
+
+  final_survey_n <- max(case_frames$survey_n)
+  final_info <- case_frames %>% filter(survey_n == final_survey_n)
+  final_net <- case_animation_net %>% filter(survey_n == final_survey_n)
+  final_max <- case_animation_max %>% filter(survey_n == final_survey_n)
+  final_plot <- ggplot() +
+    geom_hline(yintercept = 0, color = "grey35", linewidth = 0.45) +
+    geom_step(
+      data = final_net,
+      aes(x = threshold_cm, y = tail_balance, color = "Most recent net balance"),
+      linewidth = 1.15,
+      direction = "hv"
+    ) +
+    geom_step(
+      data = final_max,
+      aes(x = threshold_cm, y = maximum_net_to_date, color = "Maximum net over monitoring period"),
+      linewidth = 1.2,
+      linetype = "longdash",
+      direction = "hv"
+    ) +
+    geom_vline(
+      xintercept = c(0.15, 0.5, 1),
+      color = "grey45",
+      linewidth = 0.4,
+      linetype = "dotted"
+    ) +
+    geom_vline(
+      data = final_info,
+      aes(xintercept = mean_absolute_delta_cm, color = mean_direction),
+      linewidth = 0.9,
+      linetype = "longdash"
+    ) +
+    scale_x_continuous(
+      limits = c(0, case_plot_max_cm),
+      breaks = case_breaks,
+      expand = expansion(mult = c(0, 0.01))
+    ) +
+    scale_y_continuous(
+      labels = scales::label_percent(accuracy = 1),
+      breaks = seq(-0.75, 0.75, by = 0.25),
+      expand = expansion(mult = c(0.01, 0.01))
+    ) +
+    coord_cartesian(ylim = c(-0.75, 0.75)) +
+    scale_color_manual(values = c(
+      "Most recent net balance" = "#1a1a1a",
+      "Maximum net over monitoring period" = "#1b7837",
+      "Positive transect mean" = "#7f0000",
+      "Negative transect mean" = "#084594"
+    )) +
+    labs(
+      title = paste0(
+        transect_id,
+        " net-balance summary: ",
+        final_info$frame_label
+      ),
+      subtitle = "Black is the most recent net balance; dashed green is the maximum observed at each threshold",
+      x = "Absolute sediment-depth change threshold (cm)",
+      y = "Accumulation minus equivalent-loss prevalence",
+      color = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.border = element_rect(color = "grey75", fill = NA, linewidth = 0.4),
+      legend.position = "bottom",
+      plot.title = element_text(face = "bold"),
+      plot.title.position = "plot"
+    )
+  final_file <- file.path(case_frame_dir, paste0(case_slug, "_frame_final_summary.png"))
+  ggsave(
+    final_file,
+    plot = final_plot,
+    width = 10,
+    height = 7,
+    units = "in",
+    dpi = 96,
+    bg = "white"
+  )
+
+  threshold_wide <- case_profiles %>%
+    mutate(threshold_key_cm = round(threshold_cm, 2)) %>%
+    filter(threshold_key_cm %in% c(0.15, 0.5, 1)) %>%
+    mutate(
+      survey_timepoint = factor(survey, levels = survey[order(survey_n)] %>% unique()),
+      threshold_code = recode(
+        as.character(threshold_key_cm),
+        `0.15` = "net_1_5mm",
+        `0.5` = "net_5mm",
+        `1` = "net_1cm"
+      )
+    ) %>%
+    select(date, survey, survey_n, survey_timepoint, threshold_code, tail_balance) %>%
+    pivot_wider(names_from = threshold_code, values_from = tail_balance) %>%
+    mutate(
+      `1 cm+` = net_1cm,
+      `5 mm to <1 cm` = net_5mm - net_1cm,
+      `1.5 mm to <5 mm` = net_1_5mm - net_5mm,
+      total_net_1_5mm = net_1_5mm
+    )
+  threshold_long <- threshold_wide %>%
+    pivot_longer(
+      c(`1 cm+`, `5 mm to <1 cm`, `1.5 mm to <5 mm`),
+      names_to = "magnitude_band",
+      values_to = "net_contribution"
+    ) %>%
+    mutate(
+      magnitude_band = factor(
+        magnitude_band,
+        levels = c("1 cm+", "5 mm to <1 cm", "1.5 mm to <5 mm")
+      ),
+      contribution_direction = factor(
+        if_else(net_contribution >= 0, "Accumulation", "Loss"),
+        levels = c("Accumulation", "Loss")
+      )
+    )
+  identity_check <- threshold_long %>%
+    summarize(
+      reconstructed = sum(net_contribution),
+      expected = first(total_net_1_5mm),
+      .by = survey_n
+    )
+  stopifnot(all(near(identity_check$reconstructed, identity_check$expected)))
+
+  stacked_plot <- ggplot(
+    threshold_long,
+    aes(
+      x = survey_timepoint,
+      y = net_contribution,
+      fill = contribution_direction,
+      alpha = magnitude_band,
+      group = magnitude_band
+    )
+  ) +
+    geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
+    geom_col(width = 0.75, position = position_stack(reverse = TRUE)) +
+    scale_y_continuous(
+      labels = scales::label_percent(accuracy = 1),
+      limits = c(-0.75, 0.75),
+      breaks = seq(-0.75, 0.75, by = 0.25),
+      expand = expansion(mult = c(0.03, 0.03))
+    ) +
+    scale_fill_manual(values = c("Accumulation" = "#b2182b", "Loss" = "#2166ac")) +
+    scale_alpha_manual(values = c(
+      "1 cm+" = 1,
+      "5 mm to <1 cm" = 0.65,
+      "1.5 mm to <5 mm" = 0.35
+    )) +
+    labs(
+      title = paste(transect_id, "net exceedance decomposed by sediment-change band"),
+      subtitle = "Stacked segments are signed, mutually exclusive contributions; points below show the transect mean",
+      x = NULL,
+      y = "Net prevalence contribution",
+      fill = "Direction",
+      alpha = "Magnitude band"
+    ) +
+    guides(fill = guide_legend(order = 1), alpha = guide_legend(order = 2)) +
+    theme_minimal(base_size = 10) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      legend.position = "bottom",
+      plot.title.position = "plot"
+    )
+  mean_plot <- case_means %>%
+    mutate(
+      survey_timepoint = factor(
+        survey,
+        levels = levels(threshold_long$survey_timepoint)
+      )
+    ) %>%
+    ggplot(aes(x = survey_timepoint, y = mean_delta_cm)) +
+    geom_hline(yintercept = 0, color = "grey35", linewidth = 0.4) +
+    geom_point(aes(color = mean_direction), size = 2.3) +
+    scale_color_manual(
+      values = c(
+        "Positive transect mean" = "#7f0000",
+        "Negative transect mean" = "#084594"
+      ),
+      guide = "none"
+    ) +
+    labs(x = "Construction survey", y = "Transect mean\ndelta (cm)") +
+    theme_minimal(base_size = 10) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.border = element_rect(color = "grey80", fill = NA, linewidth = 0.3),
+      axis.text.x = element_text(size = 8, angle = 45, hjust = 1)
+    )
+  stacked_combined <- stacked_plot / mean_plot +
+    plot_layout(heights = c(4, 1), guides = "collect") &
+    theme(legend.position = "bottom")
+
+  case_output_dir <- file.path("code", "figures", "remaining_case_studies")
+  dir.create(case_output_dir, recursive = TRUE, showWarnings = FALSE)
+  heatmap_file <- file.path(case_output_dir, paste0(case_slug, "_heatmap.png"))
+  mirrored_file <- file.path(case_output_dir, paste0(case_slug, "_mirrored.png"))
+  stacked_file <- file.path(case_output_dir, paste0(case_slug, "_stacked.png"))
+  facet_height <- max(9, 2.05 * ceiling(n_distinct(case_deltas$survey_n) / 4) + 1.5)
+  ggsave(heatmap_file, case_heatmap, width = 11, height = 7.5, dpi = 120, bg = "white")
+  ggsave(mirrored_file, case_mirrored, width = 11, height = facet_height, dpi = 120, bg = "white")
+  ggsave(stacked_file, stacked_combined, width = 12, height = 8, dpi = 120, bg = "white")
+
+  player_id <- paste0(case_slug, "-empirical-memory-player")
+  player_frames <- c(
+    map_chr(case_frame_files$frame_file, knitr::image_uri),
+    knitr::image_uri(final_file)
+  )
+  frames_json <- jsonlite::toJSON(player_frames, auto_unbox = TRUE)
+  player <- htmltools::tags$div(
+    id = player_id,
+    class = "case-player",
+    htmltools::tags$img(
+      src = player_frames[[1]],
+      alt = paste(transect_id, "animated empirical accumulation, loss, and net-balance curves")
+    ),
+    htmltools::tags$div(
+      class = "case-player-controls",
+      htmltools::tags$button(type = "button", `data-action` = "play", "Play"),
+      htmltools::tags$button(type = "button", `data-action` = "restart", "Restart"),
+      htmltools::tags$input(
+        type = "range",
+        min = 0,
+        max = length(player_frames) - 1,
+        value = 0,
+        step = 1,
+        `aria-label` = paste(transect_id, "animation frame")
+      ),
+      htmltools::tags$span(
+        class = "case-player-status",
+        paste0("1 / ", length(player_frames))
+      )
+    ),
+    htmltools::tags$script(htmltools::HTML(sprintf(paste0(
+      "(function(){const root=document.getElementById('%s');const frames=%s;",
+      "const image=root.querySelector('img');const playButton=root.querySelector('[data-action=play]');",
+      "const restartButton=root.querySelector('[data-action=restart]');const slider=root.querySelector('input[type=range]');",
+      "const status=root.querySelector('.case-player-status');let index=0;let timer=null;",
+      "function showFrame(i){index=Math.max(0,Math.min(i,frames.length-1));image.src=frames[index];slider.value=index;status.textContent=(index+1)+' / '+frames.length;}",
+      "function stop(){if(timer!==null)window.clearInterval(timer);timer=null;playButton.textContent=index===frames.length-1?'Play again':'Play';}",
+      "function play(){if(timer!==null){stop();return;}if(index===frames.length-1)showFrame(0);playButton.textContent='Pause';",
+      "timer=window.setInterval(function(){if(index>=frames.length-1){stop();return;}showFrame(index+1);if(index===frames.length-1)stop();},500);}",
+      "playButton.addEventListener('click',play);image.addEventListener('click',play);",
+      "restartButton.addEventListener('click',function(){stop();showFrame(0);});",
+      "slider.addEventListener('input',function(){stop();showFrame(Number(this.value));});})();"
+    ), player_id, frames_json)))
+  )
+
+  cat(sprintf(
+    '<h2 id="case-study-%d-%s">Case study %d: %s</h2>\n',
+    case_number,
+    case_slug,
+    case_number,
+    transect_id
+  ))
+  cat('<h3>Alternative Baseline-Con1-Con2 reference</h3>\n')
+  cat(knitr::kable(case_reference_summary, format = "html", digits = 2), "\n")
+  cat('<h3>Meter-position diagnostic</h3>\n')
+  cat(case_img_tag(heatmap_file, paste(transect_id, "meter-position heatmap")), "\n")
+  cat('<h3>Empirical tail-balance analysis</h3>\n')
+  cat('<h4>Mirrored empirical curves with net balance</h4>\n')
+  cat(case_img_tag(mirrored_file, paste(transect_id, "mirrored empirical curves")), "\n")
+  cat('<h4>Animated empirical curves with maximum-net memory</h4>\n')
+  player_html <- gsub(">[[:space:]]+<", "><", as.character(player))
+  cat(player_html, "\n")
+  cat('<h4>Stacked net contributions by sediment-change band</h4>\n')
+  cat(case_img_tag(stacked_file, paste(transect_id, "stacked net threshold contributions")), "\n")
+}
+
+cat(
+  '<style>',
+  '.case-player{max-width:960px;margin:1rem auto 1.5rem}',
+  '.case-player img{width:100%;height:auto;display:block;cursor:pointer;border:1px solid #d4d4d4}',
+  '.case-player-controls{display:flex;align-items:center;gap:.65rem;margin-top:.55rem}',
+  '.case-player button{border:1px solid #777;background:#fff;color:#222;padding:.35rem .75rem;cursor:pointer}',
+  '.case-player button:hover{background:#f0f0f0}',
+  '.case-player input[type=range]{flex:1}',
+  '.case-player-status{min-width:5.5rem;text-align:right;font-variant-numeric:tabular-nums}',
+  '</style>\n',
+  sep = ''
+)
+
+walk2(
+  remaining_case_transects,
+  seq_along(remaining_case_transects) + 2,
+  build_remaining_case_study
+)
+```
