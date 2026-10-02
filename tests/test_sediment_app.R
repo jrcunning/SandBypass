@@ -75,7 +75,6 @@ test_that('plots render and server responds to changed selections and baselines'
     expect_true(length(output$bands) > 0)
     expect_true(length(output$animation) > 0)
     expect_true(length(output$heatmap) > 0)
-    expect_true(length(output$curves) > 0)
     session$setInputs(transects = character())
     expect_error(analysis())
     session$setInputs(transects = 'ACER_NS')

@@ -73,7 +73,7 @@ calculate_analysis <- function(raw, selected, reference = 'official') {
       n_positions = n(), mean_delta_cm = mean(delta_cm), .groups = 'drop') |> arrange(survey_n) |>
     mutate(label = paste0(survey, ' | ', date_start, ifelse(date_start == date_end, '', paste0(' to ', date_end))))
   xmax <- max(1, ceiling(2 * max(abs(deltas$delta_cm))) / 2)
-  thresholds <- seq(0, xmax, by = .05)
+  thresholds <- sort(unique(c(seq(0, xmax, by = .05), 5)))
   profiles <- bind_rows(lapply(surveys$survey_n, function(s) {
     x <- deltas$delta_cm[deltas$survey_n == s]
     a <- vapply(thresholds, function(t) mean(if(t == 0) x > 0 else x >= t), numeric(1))
@@ -98,7 +98,7 @@ plot_style <- function() theme_minimal(base_size = 12) + theme(
   plot.title = element_text(face = 'bold', color = '#153e4a'),
   plot.title.position = 'plot', legend.title = element_blank())
 plot_tails <- function(a, survey_n = NULL, summary = FALSE) {
-  p <- a$profiles
+  p <- a$profiles |> filter(threshold_cm <= a$xmax)
   if(!is.null(survey_n)) p <- filter(p, .data$survey_n == !!survey_n)
   g <- ggplot(p, aes(threshold_cm)) + geom_hline(yintercept = 0, color = 'grey55')
   if(!summary) {

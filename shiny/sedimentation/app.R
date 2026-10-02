@@ -28,12 +28,17 @@ ui <- page_sidebar(
     h3 {font-weight:700}.button-row{display:flex;gap:8px;margin-bottom:18px}
     .card{border:1px solid #dbe5e7;box-shadow:0 3px 14px #193b4508}
     .notice{padding:12px 16px;border-left:3px solid #16858a;background:#eaf4f3;margin:12px 0}
-    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:16px;padding:12px 4px}
-    .metric-group{min-width:0;padding:0 12px;border-left:2px solid #dbe5e7}
-    .metric-heading{font-size:13px;font-weight:600;margin:0 0 8px;color:#193b45}
-    .metric-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .metric strong{display:block;font-size:23px;white-space:nowrap;font-variant-numeric:tabular-nums}
-    .metric span{display:block;font-size:12px;color:#547078}.shiny-plot-output{background:white}
+    .metrics{display:flex;align-items:center;gap:20px;padding:12px 4px;overflow-x:auto}
+    .metric-survey{flex:0 0 105px}.metric-survey strong{display:block;font-size:22px}
+    .metric-survey span{display:block;font-size:12px;color:#547078}
+    .metric-table{flex:1;border-collapse:collapse;min-width:460px;font-variant-numeric:tabular-nums}
+    .metric-table th,.metric-table td{padding:5px 8px;text-align:right;white-space:nowrap}
+    .metric-table thead th{font-size:12px;color:#547078;font-weight:600;text-align:center}
+    .metric-table thead{border-bottom:1px solid #dbe5e7}
+    .metric-table tbody th{text-align:left;font-size:12px;color:#547078;font-weight:500}
+    .metric-table td{font-size:20px;font-weight:700}
+    .metric-table .metric-net{border-left:1px solid #dbe5e7}
+    .shiny-plot-output{background:white}
     .bslib-sidebar-layout>.main{gap:18px} .tab-content{padding-top:14px}
   '))),
   card(card_header('Monitoring footprint'),
@@ -46,9 +51,8 @@ ui <- page_sidebar(
       tags$details(tags$summary('How to read these curves'),
         tags$p('Red is the fraction accumulating at least the threshold depth. Blue is the fraction losing at least that depth, plotted below zero. Black is accumulation minus loss. At zero, unchanged positions are excluded from both tails. Green is a threshold-specific running maximum, which may be negative.'),
         tags$p('The dark red or blue vertical dash marks the absolute mean change (red = positive, blue = negative). Percentages are fractions of sampled meter positions, not estimates of impacted seabed area.'))),
-    nav_panel('Change along transects', uiOutput('heatmap_container')),
-    nav_panel('Compare surveys', uiOutput('curves_container')),
     nav_panel('Change by depth band', plotOutput('bands', height = 650)),
+    nav_panel('Change along transects', uiOutput('heatmap_container')),
     nav_panel('About the analysis',
       tags$h4('Meter-matched change'),
       tags$p('The available sediment-depth replicates are averaged at each transect-meter-survey position. The chosen reference is computed at that same position, with equal weight for each reference survey. Change equals survey mean minus reference depth, in centimeters. Positive values indicate accumulation.'),
@@ -136,38 +140,39 @@ server <- function(input, output, session) {
     s <- a$surveys[min(i,nrow(a$surveys)),]
     final_frame <- i > nrow(a$surveys)
     maximum_mean <- max(a$surveys$mean_delta_cm[a$surveys$survey_n <= s$survey_n])
-    p <- a$profiles |> filter(survey_n == s$survey_n, round(threshold_cm,2) == 1)
-    metric <- function(value, label) div(class = 'metric', tags$strong(value), tags$span(label))
+    p <- a$profiles |> filter(survey_n == s$survey_n, round(threshold_cm,2) %in% c(.15,.5,1,5)) |>
+      arrange(threshold_cm)
+    metric_row <- function(label, mean_value, net_values) {
+      tags$tr(tags$th(scope = 'row', label), tags$td(sprintf('%+.2f', mean_value)),
+        lapply(seq_along(net_values), function(j) tags$td(
+          class = if(j == 1) 'metric-net' else NULL,
+          scales::percent(net_values[j], accuracy = .1))))
+    }
     date_label <- if(s$date_start == s$date_end) as.character(s$date_start) else
       paste(s$date_start, 'to', s$date_end)
     tagList(
       div(class = 'metrics',
-        div(class = 'metric-group',
-          tags$h4(class = 'metric-heading', if(final_frame) 'Latest survey' else 'Survey'),
-          metric(s$survey, date_label)),
-        div(class = 'metric-group',
-          tags$h4(class = 'metric-heading', 'Mean change from baseline'),
-          div(class = 'metric-pair',
-            metric(sprintf('%+.2f cm',s$mean_delta_cm), 'Current'),
-            metric(sprintf('%+.2f cm',maximum_mean), 'Historical max'))),
-        div(class = 'metric-group',
-          tags$h4(class = 'metric-heading', 'Net accumulation ≥1 cm'),
-          div(class = 'metric-pair',
-            metric(scales::percent(p$net, accuracy = .1), 'Current'),
-            metric(scales::percent(p$maximum_net, accuracy = .1), 'Historical max')))),
-      if(final_frame) tags$small(style = 'display:block;margin-bottom:8px',
-        'Historical maxima cover the full monitoring period.'),
-      tags$small('Percentages describe sampled positions: the fraction accumulating ≥1 cm minus the fraction losing ≥1 cm, relative to the selected baseline. Historical maxima are the highest signed values through the displayed survey, relative to the selected baseline; they can be negative. Maximum net accumulation follows the green curve and is not the total area ever affected.')
+        div(class = 'metric-survey',
+          tags$span(if(final_frame) 'Latest survey' else 'Survey'),
+          tags$strong(s$survey), tags$span(date_label)),
+        tags$table(class = 'metric-table', `aria-label` = 'Current and historical maximum sediment change from the selected baseline',
+          tags$thead(
+            tags$tr(tags$th(rowspan = 2, scope = 'col', ''),
+              tags$th(rowspan = 2, scope = 'col', 'Mean change', tags$br(), 'from baseline (cm)'),
+              tags$th(colspan = 4, scope = 'colgroup', class = 'metric-net', 'Net accumulation from baseline')),
+            tags$tr(tags$th(scope = 'col', class = 'metric-net', '≥1.5 mm'),
+              tags$th(scope = 'col', '≥5 mm'), tags$th(scope = 'col', '≥1 cm'),
+              tags$th(scope = 'col', '≥5 cm'))),
+          tags$tbody(
+            metric_row('Current', s$mean_delta_cm, p$net),
+            metric_row('Historical max', maximum_mean, p$maximum_net)))),
+      tags$small('Percentages describe sampled positions: the fraction accumulating at least the indicated depth minus the fraction losing at least that depth, relative to the selected baseline. Historical maxima are the highest signed values through the displayed survey, relative to the selected baseline; they can be negative. Maximum net accumulation follows the green curve and is not the total area ever affected.')
     )
   })
   output$heatmap_container <- renderUI({
     a <- analysis(); plotOutput('heatmap', height = max(520, ceiling(length(selected())/2) * (150 + 16*nrow(a$surveys))))
   })
   output$heatmap <- renderPlot(plot_heatmap(analysis()), res = 110)
-  output$curves_container <- renderUI({
-    a <- analysis(); plotOutput('curves', height = max(450, 220 * ceiling(nrow(a$surveys)/3)))
-  })
-  output$curves <- renderPlot(plot_tails(analysis()), res = 100)
   output$bands <- renderPlot(plot_bands(analysis()), res = 110)
   output$download <- downloadHandler(
     filename = function() paste0('sediment-', input$reference, '.csv'),

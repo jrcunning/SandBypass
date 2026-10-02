@@ -1,0 +1,10 @@
+name: sand-bypass-sediment-explorer
+title: Sand Bypass Sediment Explorer
+username: jrcunning
+account: jrcunning
+server: connect.posit.cloud
+hostUrl: https://api.connect.posit.cloud/v1
+appId: 01a0fdd1-3ec4-ee6e-2d2c-02b9b037c13b
+bundleId:
+url: https://connect.posit.cloud/jrcunning/content/01a0fdd1-3ec4-ee6e-2d2c-02b9b037c13b
+version: 1
