@@ -26,6 +26,7 @@ ui <- page_sidebar(
     .leaflet-container {isolation:isolate;z-index:0}
     .eyebrow {font-size:11px;letter-spacing:2px;font-weight:700;color:#14777a}
     h3 {font-weight:700}.button-row{display:flex;gap:8px;margin-bottom:18px}
+    .button-row .btn{padding:8px 10px;white-space:nowrap;font-size:13px}
     .card{border:1px solid #dbe5e7;box-shadow:0 3px 14px #193b4508}
     .notice{padding:12px 16px;border-left:3px solid #16858a;background:#eaf4f3;margin:12px 0}
     .metrics{display:flex;align-items:center;gap:20px;padding:12px 4px;overflow-x:auto}
@@ -51,7 +52,7 @@ ui <- page_sidebar(
       tags$details(tags$summary('How to read these curves'),
         tags$p('Red is the fraction accumulating at least the threshold depth. Blue is the fraction losing at least that depth, plotted below zero. Black is accumulation minus loss. At zero, unchanged positions are excluded from both tails. Green is a threshold-specific running maximum, which may be negative.'),
         tags$p('The dark red or blue vertical dash marks the absolute mean change (red = positive, blue = negative). Percentages are fractions of sampled meter positions, not estimates of impacted seabed area.'))),
-    nav_panel('Change by depth band', plotOutput('bands', height = 650)),
+    nav_panel('Change by depth band', plotOutput('bands', height = 750)),
     nav_panel('Change along transects', uiOutput('heatmap_container')),
     nav_panel('About the analysis',
       tags$h4('Meter-matched change'),
@@ -59,7 +60,10 @@ ui <- page_sidebar(
       tags$p('Official baseline results begin at Con1. The median of Baseline/Con1/Con2 and the mean of Con1/Con2 begin at Con3. The mean of Con1/Con2/Con3 begins at Con4. Construction-based references are sensitivity analyses; they include construction observations.'),
       tags$h4('Combining transects and maintaining coverage'),
       tags$p('The app pools individual transect-meter changes, rather than averaging transect curves. Each retained meter position has equal weight. Only surveys available for every selected transect are included. A fixed set of positions observed across all included surveys is used. Positions with incomplete reference surveys or non-finite changes are excluded and reported.'),
-      tags$p('Analyses use meters 0–50 to match the notebook’s consistently monitored segments, including ST1 and ST38. The map shows these same 0–50 m segments using their surveyed GPS anchors. Only transects with construction monitoring are shown; baseline-only observations remain in the source data.'),
+      tags$p('Analyses use meters 0–50 to match the notebook’s consistently monitored segments, including ST1 and ST38. The map shows these same 0–50 m segments using surveyed GPS anchors. The explorer includes the 13 transects sampled during construction, with Int1 continuing their monitoring record.'),
+      tags$h4('Survey names and dates'),
+      tags$p('All surveys form one time series, including Int1 after Con37. Each survey is labeled with its supplied name and the actual sampling date or date range for the selected transects. Historical maxima continue across the full series, including Int1.'),
+      tags$p('ACER_NS, ACER_WE, BT23, BT23_S, BT24, and BT24_N have only Baseline and Int1 observations. They cannot support construction-based reference comparisons and are excluded from the map, selector, analyses, and downloads. Their records remain in the source data.'),
       tags$h4('Empirical tails and depth bands'),
       tags$p('At each 0.05 cm threshold, accumulation is P(change ≥ threshold), loss is P(change ≤ −threshold), and net balance is accumulation minus loss. At zero, strict inequalities exclude unchanged observations. The animation retains the maximum signed net balance at each threshold through the current survey.'),
       tags$p('The disjoint depth-band contributions are net(1 cm), net(0.5 cm) − net(1 cm), and net(0.15 cm) − net(0.5 cm). Their signed sum equals net prevalence at 1.5 mm. They describe magnitude and direction; they do not establish the cause of sediment change.'),
@@ -76,7 +80,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, 'transects', selected = if(id %in% s) setdiff(s,id) else c(s,id))
   }
   observeEvent(input$map_shape_click, toggle(input$map_shape_click$id))
-  gps <- monitoring$gps |> filter(transect %in% active_transects, meter >= 0, meter <= 50)
+  gps <- monitoring$gps |> filter(transect %in% active_transects) |> map_segments()
   palette <- c('1.0 cm predicted' = '#c1121f', '1.5 mm predicted' = '#f28e2b', '0 cm predicted' = '#287271')
   draw_transects <- function(m, selection) {
     for(id in unique(gps$transect)) {
@@ -113,11 +117,14 @@ server <- function(input, output, session) {
   output$coverage_note <- renderUI({
     a <- analysis()
     n <- nrow(distinct(a$deltas, transect, meter))
-    expected <- monitoring$raw |> filter(transect %in% selected(), meter <= 50, survey_n > max(reference_spec(input$reference)$surveys)) |>
+    expected <- monitoring$raw |> filter(transect %in% selected(), meter <= 50,
+      monitoring_phase != 'pre_construction',
+      monitoring_phase == 'post_construction' | survey_n > max(reference_spec(input$reference)$surveys)) |>
       distinct(transect, meter) |> nrow()
     div(class = 'notice', paste('Reference:', names(reference_options)[match(input$reference, reference_options)],
-      '•', n, 'fixed meter positions •', nrow(a$surveys), 'shared surveys.'),
-      if(length(a$omitted)) tags$p(paste('Omitted rounds without coverage for every selected transect:', paste0('Con', a$omitted, collapse = ', '))),
+      '•', n, 'fixed meter positions •', nrow(a$surveys),
+      if(nrow(a$surveys) == 1) 'shared survey.' else 'shared surveys.'),
+      if(length(a$omitted)) tags$p(paste('Omitted rounds without coverage for every selected transect:', paste(a$omitted_surveys$label, collapse = '; '))),
       if(expected > n) tags$p(paste(expected - n, 'meter positions excluded because reference or shared-survey coverage is incomplete.')))
   })
   output$frame_control <- renderUI({
@@ -154,7 +161,8 @@ server <- function(input, output, session) {
       div(class = 'metrics',
         div(class = 'metric-survey',
           tags$span(if(final_frame) 'Latest survey' else 'Survey'),
-          tags$strong(s$survey), tags$span(date_label)),
+          tags$strong(s$survey),
+          tags$span(date_label)),
         tags$table(class = 'metric-table', `aria-label` = 'Current and historical maximum sediment change from the selected baseline',
           tags$thead(
             tags$tr(tags$th(rowspan = 2, scope = 'col', ''),
@@ -177,14 +185,14 @@ server <- function(input, output, session) {
   output$download <- downloadHandler(
     filename = function() paste0('sediment-', input$reference, '.csv'),
     content = function(file) {
-      d <- analysis()$deltas |> mutate(reference_method = input$reference, source_workbook = monitoring$source)
+      d <- analysis()$deltas |> mutate(reference_method = input$reference)
       write.csv(d, file, row.names = FALSE, na = '')
     })
   output$summary_download <- downloadHandler(
     filename = function() paste0('sediment-surveys-', input$reference, '.csv'),
     content = function(file) {
       p <- analysis()$profiles |> mutate(reference_method = input$reference,
-        selected_transects = paste(selected(), collapse = ';'), source_workbook = monitoring$source)
+        selected_transects = paste(selected(), collapse = ';'))
       write.csv(p, file, row.names = FALSE, na = '')
     })
 }
