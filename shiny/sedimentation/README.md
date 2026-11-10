@@ -132,20 +132,73 @@ independent empirical calculations, unequal
 pooling weights, missing surveys/references, zero-change tails, signed memory,
 band reconstruction, plot rendering, reactive changes, and empty selections.
 
-## Share with stakeholders
+## Publish updates to Posit Connect Cloud
 
-Deploy the **entire `shiny/sedimentation` directory** to an R-capable Shiny host
-(such as shinyapps.io, Posit Connect, or Shiny Server). After configuring your hosting
-account locally, a shinyapps.io deployment can be made from the repository root:
+The existing deployment is the
+[Sand Bypass Sediment Explorer](https://connect.posit.cloud/jrcunning/content/01a0fdd1-3ec4-ee6e-2d2c-02b9b037c13b)
+in the **jrcunning** account. Pushing changes to GitHub does not update the hosted
+app; publish from R after the local changes are ready.
+
+Run the commands below in the **R console**, with the SandBypass repository as the
+working directory (for example, open the project in RStudio).
+
+### One-time setup
+
+Install the publishing package in your regular R library, using a current release
+of R. This avoids depending on the temporary `/private/tmp` library used for the
+initial update:
 
 ```r
-rsconnect::deployApp(appDir = "shiny/sedimentation",
-                     appName = "sand-bypass-sediment-explorer")
+install.packages("rsconnect")
 ```
 
-No hosting account or credentials are embedded. This repository change does not
-publish the data or create a public deployment. The app requires a running R server;
-the generated notebook HTML and GitHub Pages cannot run it.
+Connect your Posit account:
+
+```r
+rsconnect::connectCloudUser()
+```
+
+Follow the browser prompts, verify the displayed code, and select **jrcunning** if
+asked to choose an account. Wait for authentication to finish in R. This login is
+saved locally; repeat it on a new computer or if publishing asks you to sign in
+again. Credentials should not be added to the repository.
+
+### Each time you publish an update
+
+1. If monitoring workbooks changed, refresh the bundled data first:
+
+   ```r
+   source("code/prepare_shiny_data.R")
+   ```
+
+   This step is unnecessary for code, display, or documentation changes alone.
+
+2. Deploy the entire app directory to the existing content ID:
+
+   ```r
+   rsconnect::deployApp(
+     appDir = "shiny/sedimentation",
+     appName = "sand-bypass-sediment-explorer",
+     appId = "01a0fdd1-3ec4-ee6e-2d2c-02b9b037c13b",
+     account = "jrcunning",
+     server = "connect.posit.cloud"
+   )
+   ```
+
+   Keep these identifiers unchanged to update the existing app. The upload uses
+   the local app files, including `data/monitoring.rds`; the original Excel folder
+   is not needed on the server.
+
+3. Wait for R to report a successful deployment, then refresh the
+   [hosted app](https://connect.posit.cloud/jrcunning/content/01a0fdd1-3ec4-ee6e-2d2c-02b9b037c13b)
+   and check the changed behavior. For the coverage display, select **ST1** and
+   **ST38** and open **Survey coverage**: Baseline and Int1 cover the full 150 m,
+   while construction rounds show the unmeasured outer 100 m in gray.
+
+The saved deployment details are in
+`rsconnect/connect.posit.cloud/jrcunning/sand-bypass-sediment-explorer.dcf`.
+The app requires a running R server; the generated notebook HTML and GitHub Pages
+cannot run it.
 
 References: [Shiny slider playback](https://shiny.posit.co/r/reference/shiny/latest/sliderinput.html)
 and [Leaflet Shiny events](https://rstudio.github.io/leaflet/articles/shiny.html).
