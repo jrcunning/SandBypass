@@ -11,7 +11,11 @@ because they have no construction observations for alternative reference compari
 Their records remain in the source data. The app analyzes meters 0–50 of the 13
 construction-monitored transects (663 positions), including their Int1 observations.
 Longer segments remain in the source data.
-Colored lines support hover labels and click selection; selected lines are thicker.
+Solid colored lines show the common 0–50 m segments. ST1 and ST38 also show their
+50–150 m extensions as gray dashed lines, indicating variable survey coverage,
+not zero sedimentation. Both sections support hover labels and click selection;
+selected lines are thicker. The Survey coverage tab shows actual measurement
+availability over each selected transect's full length.
 The original notebook is unchanged.
 
 ## Run locally
@@ -78,7 +82,24 @@ Sampling dates are retained per meter and as date ranges in survey summaries.
   pooled views to Int1 when those six are selected alongside the original 13.
   All monitored selects the 13 construction-monitored transects.
 - Analysis uses 0–50 m, including ST1/ST38. The map shows the same segments using
-  surveyed GPS anchors.
+  surveyed GPS anchors, plus the 50–150 m extensions of ST1/ST38 as gray dashed
+  lines. Those extensions are outside the common time-series cohort.
+- ST1 and ST38 have 0–150 m measurements at Baseline and Int1, but only 0–50 m
+  in the loaded construction rounds. Additional construction coverage may be
+  triggered by sediment impacts greater than 1 cm above baseline. Such intermittent
+  observations do not expand the denominator for the routine time series, and no
+  sedimentation values are inferred for unmeasured positions.
+- Survey coverage is independent of the reference selection. It includes Baseline,
+  the construction reference rounds, and rounds omitted from a pooled change
+  analysis. Teal cells have finite depth measurements, including genuine zeros;
+  gray cells have no measurement record; orange cells have a record but no finite
+  depth. The dashed boundary marks the last position in the 0–50 m cohort.
+  Dates reflect the selected transects where available; entirely missing rounds
+  use the date range recorded for other construction-monitored project transects.
+  The coverage download includes every expected meter/survey position, with blank
+  measured depths and observation dates where records are absent. This is separate
+  from the meter-change and survey-summary downloads, which remain limited to
+  the fixed 0–50 m analysis cohort.
 - Combined views concatenate meter-level deltas. Each position gets equal weight.
   Only shared survey rounds are retained, with a fixed meter cohort. Dates are
   presented as ranges where selected transects were sampled on different dates.
@@ -105,6 +126,8 @@ transects, exclusion of the six Baseline/Int1-only transects from the app and do
 cumulative workbook discovery and deduplication, phase/date validation,
 construction-only refresh compatibility, map endpoint interpolation, continuous
 running maxima through Int1, survey/date labels, reference changes, CSV downloads,
+full-length coverage, measured zeros versus missing records, missing depths,
+intermittent extended surveys, unchanged time-series denominators,
 independent empirical calculations, unequal
 pooling weights, missing surveys/references, zero-change tails, signed memory,
 band reconstruction, plot rendering, reactive changes, and empty selections.

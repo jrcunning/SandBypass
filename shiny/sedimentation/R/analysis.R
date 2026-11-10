@@ -85,15 +85,42 @@ read_monitoring <- function(root) {
        construction_end = construction_end,
        prepared = as.character(Sys.Date()))
 }
-# Clip the map to the analysis segment, interpolating an endpoint when the GPS
-# workbook provides only 0 m and 70 m anchors (BT23 and BT24).
-map_segments <- function(gps, max_meter = 50) {
+# Clip to a meter interval, interpolating endpoints between surveyed GPS anchors.
+map_segments <- function(gps, max_meter = 50, min_meter = 0) {
   gps |> group_by(transect) |> group_modify(function(d, key) {
-    meters <- sort(unique(c(d$meter[d$meter >= 0 & d$meter <= max_meter], max_meter)))
+    meters <- sort(unique(c(min_meter,
+      d$meter[d$meter >= min_meter & d$meter <= max_meter], max_meter)))
     d[rep(1, length(meters)), ] |> mutate(meter = meters,
       lat = approx(d$meter, d$lat, xout = meters)$y,
       lon = approx(d$meter, d$lon, xout = meters)$y)
   }) |> ungroup()
+}
+# Describe actual sampling over the full transect, independently of the reference
+# and the fixed 0-50 m cohort used by calculate_analysis(). Missing rows stay NA.
+survey_coverage <- function(raw, selected) {
+  observations <- raw |> filter(transect %in% selected) |>
+    transmute(transect, meter, survey_n, observed_date = date, meter_mean_cm,
+      source_workbook, recorded = TRUE)
+  dates <- observations |> group_by(survey_n) |>
+    summarise(selected_start = min(observed_date), selected_end = max(observed_date), .groups = 'drop')
+  rounds <- raw |> group_by(survey_n, survey) |>
+    summarise(date_start = min(date), date_end = max(date), .groups = 'drop') |>
+    left_join(dates, by = 'survey_n') |> mutate(
+      date_start = coalesce(selected_start, date_start), date_end = coalesce(selected_end, date_end),
+      label = survey_label(survey, date_start, date_end)) |>
+    select(-selected_start, -selected_end) |> arrange(survey_n)
+  positions <- bind_rows(lapply(selected, function(id) {
+    tibble(transect = id, meter = seq.int(0L, if(id %in% c('ST1','ST38')) 150L else 50L))
+  }))
+  crossing(positions, rounds) |>
+    left_join(observations, by = c('transect','meter','survey_n')) |>
+    mutate(recorded = coalesce(recorded, FALSE),
+      measured = recorded & is.finite(meter_mean_cm),
+      in_analysis_segment = meter <= 50,
+      status = factor(case_when(!recorded ~ 'Not measured', !measured ~ 'Depth missing',
+        TRUE ~ 'Measured'), levels = c('Measured','Not measured','Depth missing')),
+      label = factor(label, levels = rev(rounds$label))) |>
+    arrange(transect, survey_n, meter)
 }
 calculate_analysis <- function(raw, selected, reference = 'official') {
   spec <- reference_spec(reference)
@@ -197,6 +224,19 @@ plot_heatmap <- function(a) {
     labs(x = 'Meter position', y = NULL, fill = 'Change (cm)', title = 'Where sediment changed',
       subtitle = 'Outlined cells: ≥1 cm accumulation. Color scale clipped at the 2nd / 98th percentiles.') + plot_style() +
     theme(axis.text.y = element_text(size = 8), panel.grid = element_blank())
+}
+plot_coverage <- function(coverage) {
+  boundary <- coverage |> filter(meter > 50) |> distinct(transect) |> mutate(boundary_meter = 50.5)
+  ggplot(coverage, aes(meter, label, fill = status)) + geom_raster(show.legend = TRUE) +
+    geom_vline(data = boundary, aes(xintercept = boundary_meter), linetype = 'longdash', color = '#555555') +
+    facet_wrap(~transect, ncol = 2, scales = 'free_x') +
+    scale_x_continuous(breaks = c(0,25,50,75,100,125,150), expand = expansion(add = .5)) +
+    scale_fill_manual(values = c(Measured = '#287271', 'Not measured' = '#d6d9dc',
+      'Depth missing' = '#e4a44d'), drop = FALSE) +
+    labs(x = 'Meter position along the full transect', y = NULL, title = 'Where measurements were collected',
+      subtitle = 'Gray: no measurement, not zero sedimentation.\nDashed boundary: end of the common 0–50 m analysis segment.') +
+    plot_style() + theme(axis.text.y = element_text(size = 8), panel.grid = element_blank(),
+      panel.spacing.x = grid::unit(1.5, 'lines'))
 }
 plot_bands <- function(a) {
   top <- ggplot(a$bands, aes(label, contribution, fill = direction, alpha = band, group = band)) +

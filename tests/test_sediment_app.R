@@ -97,6 +97,54 @@ test_that('all monitored map segments include their 50 m endpoint', {
     expect_equal(endpoint$lat, anchors$lat[1] + 50/70 * diff(anchors$lat))
     expect_equal(endpoint$lon, anchors$lon[1] + 50/70 * diff(anchors$lon))
   }
+  extensions <- bundle$gps |> filter(transect %in% c('ST1','ST38')) |>
+    map_segments(min_meter = 50, max_meter = 150)
+  expect_equal(extensions$meter, rep(c(50,100,150), 2))
+  expect_equal(select(extensions, transect, meter, lat, lon),
+    bundle$gps |> filter(transect %in% c('ST1','ST38'), meter >= 50) |> select(transect, meter, lat, lon))
+})
+test_that('full-length coverage distinguishes missing construction measurements from measured depths', {
+  raw <- filter(bundle$raw, transect %in% bundle$inventory$transect[bundle$inventory$has_construction])
+  coverage <- survey_coverage(raw, c('ST1','ST38'))
+  expect_equal(nrow(coverage), 302L * n_distinct(raw$survey_n))
+  for(id in c('ST1','ST38')) {
+    for(survey in c('Baseline','Int1')) {
+      d <- filter(coverage, transect == id, .data$survey == .env$survey)
+      expect_equal(sum(d$measured),151L)
+      expect_equal(sum(d$measured & !d$in_analysis_segment),100L)
+    }
+  }
+  construction <- filter(coverage, grepl('^Con', survey))
+  outer <- filter(construction, meter > 50)
+  expect_true(all(outer$status == 'Not measured'))
+  expect_true(all(is.na(outer$meter_mean_cm) & is.na(outer$observed_date)))
+  expect_false(any(outer$recorded | outer$measured))
+  core <- construction |> filter(meter <= 50) |> count(transect, survey, wt = as.integer(measured))
+  expect_true(all(core$n == 51L))
+  expect_true('Baseline' %in% coverage$survey)
+  grDevices::pdf(file = NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_true(length(ggplot2::ggplotGrob(plot_coverage(coverage))) > 0)
+})
+test_that('intermittent extended surveys are visible but never inflate time-series denominators', {
+  raw <- expand_grid(transect = 'ST1', meter = 0:150, survey_n = 0:1) |>
+    filter(survey_n == 0 | meter <= 50 | between(meter,80,85)) |>
+    mutate(survey = ifelse(survey_n == 0,'Baseline','Con1'),
+      date = as.Date('2025-01-01') + survey_n, source_workbook = 'example.xlsx',
+      meter_mean_cm = ifelse(survey_n == 0,1,2))
+  raw$meter_mean_cm[raw$survey_n == 1 & raw$meter == 0] <- 0
+  raw$meter_mean_cm[raw$survey_n == 1 & raw$meter == 82] <- NA_real_
+  c <- survey_coverage(raw,'ST1') |> filter(survey == 'Con1')
+  expect_equal(as.character(c$status[c$meter %in% c(0,51,80,82,85,86)]),
+    c('Measured','Not measured','Measured','Depth missing','Measured','Not measured'))
+  expect_true(c$measured[c$meter == 0])
+  expect_true(all(is.na(c$meter_mean_cm[c$status == 'Not measured'])))
+  a <- calculate_analysis(raw,'ST1')
+  expect_equal(a, calculate_analysis(filter(raw,meter <= 50),'ST1'))
+  expect_equal(a$surveys$n_positions,51L)
+  p <- filter(a$profiles, threshold_cm == 1)
+  expect_equal(p$accumulation,50/51)
+  expect_equal(p$loss,1/51)
 })
 test_that('references use the requested statistics and exclude reference rounds', {
   raw <- tibble(transect = 'X', meter = 0L, survey_n = 0:4,
@@ -183,6 +231,8 @@ test_that('plots render and server responds to changed selections and baselines'
       expect_error(analysis(), 'Select at least one transect')
     }
     expect_setequal(unique(gps$transect), active_transects)
+    expect_setequal(unique(extensions$transect),c('ST1','ST38'))
+    expect_true(all(extensions$meter >= 50 & extensions$meter <= 150))
     # Even stale selections containing all source transects must use only the 13.
     session$setInputs(transects = monitoring$inventory$transect, reference = 'official')
     expect_equal(length(selected()),13L)
@@ -207,9 +257,23 @@ test_that('plots render and server responds to changed selections and baselines'
     expect_equal(unique(summary_export$label[summary_export$survey == 'Int1']),
       'Int1 | 2026-07-17 to 2026-07-23')
     expect_equal(unique(summary_export$selected_transects),paste(active_transects, collapse = ';'))
+    coverage_export <- read.csv(output$coverage_download)
+    expect_setequal(unique(coverage_export$transect),active_transects)
+    outer <- filter(coverage_export, transect %in% c('ST1','ST38'), meter > 50, grepl('^Con',survey))
+    expect_true(nrow(outer) > 0)
+    expect_true(all(is.na(outer$meter_mean_cm)))
+    expect_true(all(outer$status == 'Not measured'))
     session$setInputs(reference = 'mean12')
     expect_equal(min(analysis()$surveys$survey_n),3L)
     expect_true(all(c('Con3','Con36','Int1') %in% analysis()$surveys$survey))
+    session$setInputs(transects = c('ST1','ST38'))
+    expect_equal(unique(analysis()$surveys$n_positions),102L)
+    expect_equal(max(analysis()$deltas$meter),50L)
+    expect_equal(sum(coverage()$measured[coverage()$survey == 'Int1']),302L)
+    expect_true(length(output$coverage_plot) > 0)
+    original_coverage <- coverage()
+    session$setInputs(reference = 'official')
+    expect_equal(coverage(),original_coverage)
     session$setInputs(transects = 'not-a-transect')
     expect_error(analysis(), 'Select at least one transect')
   })

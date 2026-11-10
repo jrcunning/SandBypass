@@ -19,6 +19,7 @@ ui <- page_sidebar(
     tags$hr(), uiOutput('selection_info'),
     downloadButton('download', 'Download meter data'),
     downloadButton('summary_download', 'Download survey summary'),
+    downloadButton('coverage_download', 'Download survey coverage'),
     tags$hr(), tags$small('Source: ', monitoring$source),
     tags$small(paste('Data prepared:', monitoring$prepared))
   ),
@@ -44,6 +45,7 @@ ui <- page_sidebar(
   '))),
   card(card_header('Monitoring footprint'),
     tags$p('Click a transect line to add or remove it. Selected lines are thicker. Hover over a line to see its name and predicted sedimentation.'),
+    tags$p('Solid colored lines show the common 0–50 m analysis segment. Gray dashed lines show the 50–150 m extensions of ST1 and ST38, which were not monitored at every survey. See Survey coverage for actual measurements; gray does not mean zero sedimentation.'),
     leafletOutput('map', height = 360)),
   uiOutput('coverage_note'),
   card(navset_tab(
@@ -53,14 +55,23 @@ ui <- page_sidebar(
         tags$p('Red is the fraction accumulating at least the threshold depth. Blue is the fraction losing at least that depth, plotted below zero. Black is accumulation minus loss. At zero, unchanged positions are excluded from both tails. Green is a threshold-specific running maximum, which may be negative.'),
         tags$p('The dark red or blue vertical dash marks the absolute mean change (red = positive, blue = negative). Percentages are fractions of sampled meter positions, not estimates of impacted seabed area.'))),
     nav_panel('Change by depth band', plotOutput('bands', height = 750)),
-    nav_panel('Change along transects', uiOutput('heatmap_container')),
+    nav_panel('Change along transects',
+      tags$p('Sediment change is shown for the common 0–50 m analysis segment. Use Survey coverage to see where measurements exist over the full 150 m length of ST1 and ST38.'),
+      uiOutput('heatmap_container')),
+    nav_panel('Survey coverage',
+      tags$p('This view shows measurement coverage, independently of the baseline reference. Teal means a sediment-depth measurement exists, including measured zeros. Gray means no measurement; orange means a record exists but its depth is missing.'),
+      tags$p('ST1 and ST38 extend to 150 m. Only their common 0–50 m segments enter the time-series statistics. Measurements beyond 50 m are shown here, but are not added to the statistical denominator. Dashed boundaries mark the end of the common segment.'),
+      uiOutput('coverage_container')),
     nav_panel('About the analysis',
       tags$h4('Meter-matched change'),
       tags$p('The available sediment-depth replicates are averaged at each transect-meter-survey position. The chosen reference is computed at that same position, with equal weight for each reference survey. Change equals survey mean minus reference depth, in centimeters. Positive values indicate accumulation.'),
       tags$p('Official baseline results begin at Con1. The median of Baseline/Con1/Con2 and the mean of Con1/Con2 begin at Con3. The mean of Con1/Con2/Con3 begins at Con4. Construction-based references are sensitivity analyses; they include construction observations.'),
       tags$h4('Combining transects and maintaining coverage'),
       tags$p('The app pools individual transect-meter changes, rather than averaging transect curves. Each retained meter position has equal weight. Only surveys available for every selected transect are included. A fixed set of positions observed across all included surveys is used. Positions with incomplete reference surveys or non-finite changes are excluded and reported.'),
-      tags$p('Analyses use meters 0–50 to match the notebook’s consistently monitored segments, including ST1 and ST38. The map shows these same 0–50 m segments using surveyed GPS anchors. The explorer includes the 13 transects sampled during construction, with Int1 continuing their monitoring record.'),
+      tags$p('Analyses use meters 0–50 to match the notebook’s consistently monitored segments, including ST1 and ST38. The map shows the full 150 m lengths of ST1 and ST38, with their 50–150 m extensions drawn as gray dashed lines. The explorer includes the 13 transects sampled during construction, with Int1 continuing their monitoring record.'),
+      tags$h4('Unequal survey coverage'),
+      tags$p('ST1 and ST38 were surveyed to 150 m at Baseline and Int1. In the loaded construction rounds, their measurements stop at 50 m. The monitoring protocol allows longer construction surveys following sediment impacts greater than 1 cm above baseline. Such intermittent or triggered coverage is not pooled into the consistently sampled 0–50 m time series.'),
+      tags$p('The Survey coverage view includes reference surveys and all recorded rounds, even when a round is omitted from a pooled change analysis. It distinguishes absent measurements from recorded depths, including zeros. Where a selected transect has no observations for an entire round, the date range comes from the other project transects. No missing measurements are filled with zero, and missing coverage does not establish an absence of sedimentation.'),
       tags$h4('Survey names and dates'),
       tags$p('All surveys form one time series, including Int1 after Con37. Each survey is labeled with its supplied name and the actual sampling date or date range for the selected transects. Historical maxima continue across the full series, including Int1.'),
       tags$p('ACER_NS, ACER_WE, BT23, BT23_S, BT24, and BT24_N have only Baseline and Int1 observations. They cannot support construction-based reference comparisons and are excluded from the map, selector, analyses, and downloads. Their records remain in the source data.'),
@@ -75,14 +86,26 @@ server <- function(input, output, session) {
   observeEvent(input$all, updateSelectizeInput(session, 'transects', selected = active_transects))
   observeEvent(input$clear, updateSelectizeInput(session, 'transects', selected = character()))
   toggle <- function(id) {
+    if(!is.null(id)) id <- sub('::extension$', '', id)
     if(is.null(id) || !id %in% active_transects) return()
     s <- selected()
     updateSelectizeInput(session, 'transects', selected = if(id %in% s) setdiff(s,id) else c(s,id))
   }
   observeEvent(input$map_shape_click, toggle(input$map_shape_click$id))
   gps <- monitoring$gps |> filter(transect %in% active_transects) |> map_segments()
+  extensions <- monitoring$gps |> filter(transect %in% active_transects, transect %in% c('ST1','ST38')) |>
+    map_segments(min_meter = 50, max_meter = 150)
+  map_extent <- bind_rows(gps, extensions)
   palette <- c('1.0 cm predicted' = '#c1121f', '1.5 mm predicted' = '#f28e2b', '0 cm predicted' = '#287271')
   draw_transects <- function(m, selection) {
+    for(id in unique(extensions$transect)) {
+      d <- filter(extensions, transect == id)
+      m <- addPolylines(m, data = d, lng = ~lon, lat = ~lat, layerId = paste0(id, '::extension'),
+        group = 'transects', color = '#80868b', dashArray = '8,6',
+        weight = if(id %in% selection) 7 else 4, opacity = .9,
+        label = paste(id, '• 50–150 m extension • Variable survey coverage; see Survey coverage • Excluded from time-series statistics'),
+        options = pathOptions(bubblingMouseEvents = FALSE))
+    }
     for(id in unique(gps$transect)) {
       d <- filter(gps, transect == id)
       m <- addPolylines(m, data = d, lng = ~lon, lat = ~lat, layerId = id,
@@ -96,10 +119,11 @@ server <- function(input, output, session) {
   output$map <- renderLeaflet({
     leaflet(options = leafletOptions(minZoom = 10)) |>
       addTiles() |>
-      fitBounds(min(gps$lon), min(gps$lat), max(gps$lon), max(gps$lat)) |>
+      fitBounds(min(map_extent$lon), min(map_extent$lat), max(map_extent$lon), max(map_extent$lat)) |>
       addScaleBar(position = 'bottomleft') |>
       draw_transects(isolate(selected())) |>
-      addLegend('bottomright', colors = unname(palette), labels = names(palette), title = 'Modeled sedimentation')
+      addLegend('bottomright', colors = unname(palette), labels = names(palette), title = 'Modeled sedimentation') |>
+      addLegend('bottomleft', colors = '#80868b', labels = '50–150 m: variable survey coverage', title = 'Gray dashed extensions')
   })
   observe({
     # Replace lines by layer ID so selection changes preserve the map viewport.
@@ -114,6 +138,10 @@ server <- function(input, output, session) {
     validate(need(!is.null(a$profiles), 'No complete, shared observations are available for this selection and baseline.'))
     a
   }) |> bindCache(selected(), input$reference)
+  coverage <- reactive({
+    validate(need(length(selected()) > 0, 'Select at least one transect to explore survey coverage.'))
+    survey_coverage(filter(monitoring$raw, transect %in% active_transects), selected())
+  }) |> bindCache(selected())
   output$coverage_note <- renderUI({
     a <- analysis()
     n <- nrow(distinct(a$deltas, transect, meter))
@@ -124,6 +152,7 @@ server <- function(input, output, session) {
     div(class = 'notice', paste('Reference:', names(reference_options)[match(input$reference, reference_options)],
       '•', n, 'fixed meter positions •', nrow(a$surveys),
       if(nrow(a$surveys) == 1) 'shared survey.' else 'shared surveys.'),
+      if(any(selected() %in% c('ST1','ST38'))) tags$p('ST1/ST38 statistics cover only 0–50 m of each 150 m transect. Their outer 100 m are not assumed to have zero sedimentation; see Survey coverage for the full measurement record.'),
       if(length(a$omitted)) tags$p(paste('Omitted rounds without coverage for every selected transect:', paste(a$omitted_surveys$label, collapse = '; '))),
       if(expected > n) tags$p(paste(expected - n, 'meter positions excluded because reference or shared-survey coverage is incomplete.')))
   })
@@ -182,6 +211,11 @@ server <- function(input, output, session) {
   })
   output$heatmap <- renderPlot(plot_heatmap(analysis()), res = 110)
   output$bands <- renderPlot(plot_bands(analysis()), res = 110)
+  output$coverage_container <- renderUI({
+    d <- coverage()
+    plotOutput('coverage_plot', height = max(520, ceiling(length(selected())/2) * (170 + 16*n_distinct(d$survey_n))))
+  })
+  output$coverage_plot <- renderPlot(plot_coverage(coverage()), res = 110)
   output$download <- downloadHandler(
     filename = function() paste0('sediment-', input$reference, '.csv'),
     content = function(file) {
@@ -195,5 +229,8 @@ server <- function(input, output, session) {
         selected_transects = paste(selected(), collapse = ';'))
       write.csv(p, file, row.names = FALSE, na = '')
     })
+  output$coverage_download <- downloadHandler(
+    filename = function() 'sediment-survey-coverage.csv',
+    content = function(file) write.csv(coverage(), file, row.names = FALSE, na = ''))
 }
 shinyApp(ui, server)
